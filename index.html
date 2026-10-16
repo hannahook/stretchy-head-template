@@ -1,0 +1,1216 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="icon" href="data:,"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Stretchy Head template</title>
+<style>
+  /* Layout: full-bleed WebGL stage, one pill HUD at the bottom, corner labels. Same look as the other Stretchy Head tests. */
+  :root{--bg-0:#0a1230;--bg-1:#04060f;--ink:#eef2ff;--muted:#8b96c4;--warm:rgba(255,160,120,.8);
+        --line:rgba(140,160,230,.18);--panel:rgba(10,16,40,.62);color-scheme:dark}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg-1);color:var(--ink);overflow:hidden;
+       font:400 15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+  #stage{position:fixed;inset:0;touch-action:none;cursor:grab;
+    background:radial-gradient(120% 90% at 50% 38%,var(--bg-0) 0%,#060a1c 55%,var(--bg-1) 100%)}
+  #stage.pinching{cursor:grabbing}
+  canvas{display:block;width:100%;height:100%}
+  .panel{position:fixed;border-radius:999px;background:var(--panel);border:1px solid var(--line);
+         backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+  .hud{left:50%;bottom:calc(26px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;align-items:center;gap:10px;
+    padding:9px 16px;color:var(--muted);font-size:13px;white-space:nowrap;pointer-events:none;
+    max-width:calc(100vw - 32px);overflow-x:auto;scrollbar-width:none;transition:opacity .5s}
+  .hud::-webkit-scrollbar{display:none}
+  .hud b{color:var(--ink);font-weight:600}
+  .hud .sep{color:rgba(140,160,230,.35)}
+  .hud.dim{opacity:0}
+  .badge{position:fixed;top:calc(22px + env(safe-area-inset-top,0px));left:24px;font-size:12px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);pointer-events:none}
+  .badge2{position:fixed;top:calc(22px + env(safe-area-inset-top,0px));right:24px;font-size:11px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--warm);pointer-events:none;text-align:right;max-width:240px}
+  #meta{position:fixed;top:calc(44px + env(safe-area-inset-top,0px));left:24px;font-size:12px;color:var(--muted);opacity:.75;
+    font-variant-numeric:tabular-nums;pointer-events:none}
+  #fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+  #sound{position:fixed;right:20px;bottom:calc(26px + env(safe-area-inset-bottom,0px));z-index:3;font:600 12px/1 inherit;
+    font-family:inherit;letter-spacing:.04em;color:var(--muted);padding:9px 14px;cursor:pointer}
+  #replay{position:fixed;left:20px;bottom:calc(26px + env(safe-area-inset-bottom,0px));z-index:3;font-family:inherit;font-weight:600;font-size:12px;letter-spacing:.04em;color:var(--muted);padding:9px 14px;cursor:pointer}
+  #replay:hover,#sound:hover{color:var(--ink)}
+  #replay:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .audio{position:fixed;right:20px;bottom:calc(26px + env(safe-area-inset-bottom,0px));z-index:3;display:flex;gap:8px}
+  .audio > button{position:static!important;transform:none!important}
+  #music{font-family:inherit;font-weight:600;font-size:12px;letter-spacing:.04em;color:var(--muted);padding:9px 14px;cursor:pointer}
+  #music:hover{color:var(--ink)} #music:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  #sound[aria-pressed=true],#music[aria-pressed=true]{color:var(--ink)}
+  #sound:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .glove{position:fixed;left:0;top:0;width:var(--gw,112px);aspect-ratio:320/319;pointer-events:none;z-index:4;opacity:0;
+    transition:opacity .18s;will-change:transform;filter:drop-shadow(0 6px 10px rgba(0,0,0,.35))}
+  .glove img{position:absolute;inset:0;width:100%;height:100%;opacity:0}
+  .glove img.on{opacity:1}
+  .glove.show{opacity:1}
+  #ghost.show{opacity:.82}
+  #stage.gloved,#stage.gloved.pinching{cursor:none}
+  .veil{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg-1);color:var(--muted);z-index:5;transition:opacity .45s}
+  .veil.gone{opacity:0;pointer-events:none}
+  @media (max-width:680px){
+    .hud{font-size:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px));padding:8px 13px;gap:7px}
+    .badge,.badge2,#meta{display:none}
+    .hud{bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+    .audio{right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+    #replay{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+  }
+</style>
+
+<div id="stage"><canvas id="gl"></canvas></div>
+<canvas id="fx" aria-hidden="true"></canvas>
+<div class="glove" id="glove" aria-hidden="true"><img alt="" data-p="open" src="glove-open.png"><img alt="" data-p="ready" src="glove-ready.png"><img alt="" data-p="pinch" src="glove-pinch.png"></div>
+<div class="glove" id="ghost" aria-hidden="true"><img alt="" data-p="open" src="glove-open.png"><img alt="" data-p="ready" src="glove-ready.png"><img alt="" data-p="pinch" src="glove-pinch.png"></div>
+<div class="badge">Grab the head</div>
+<div class="badge2">Stretchy Head template</div>
+<div class="panel hud" id="hud">
+  <span><b>Drag the head</b> to stretch</span><span class="sep">/</span>
+  <span>small pulls <b>stay put</b> (too many and it <b>spins</b>)</span><span class="sep">/</span>
+  <span><b>Tap</b> to boop</span><span class="sep">/</span>
+  <span>mess with it and it <b>reacts</b></span><span class="sep">/</span>
+  <span>Drag the <b>background</b> to turn (whirl it and it gets <b>dizzy</b>)</span><span class="sep">/</span>
+  <span><b>R</b> spin &middot; <b>E</b>/<b>W</b> scoots &middot; <b>T</b> tilt &middot; <b>D</b> dizzy &middot; <b>A</b> dance &middot; <b>Z</b> sleep &middot; <b>N</b> no &middot; <b>1 2 3</b> faces &middot; <b>L</b> light &middot; <b>S</b> sound &middot; <b>M</b> music</span>
+</div>
+<button class="panel" id="replay" type="button">Replay intro</button>
+<div class="audio"><button class="panel" id="sound" type="button" aria-pressed="true">Sound on</button><button class="panel" id="music" type="button" aria-pressed="false">Music off</button></div>
+<div id="meta"></div>
+<div class="veil" id="veil"><div>Loading&hellip;</div></div>
+
+<script>
+"use strict";
+// ---- Head loader: head.glb (mesh + per-vertex data + "Surprise" shape key) and head.json (numbers) ----
+// See ASSET-SPEC.md. Nothing below assumes a particular head; every head-specific number comes from these files.
+async function loadHead(glbURL, jsonURL){
+  // head.glb is tried first; hosts that refuse to serve .glb (Claude Artifacts, some static hosts) can ship
+  // head.glb.b64.txt instead: the same bytes, base64-encoded (`base64 -w0 head.glb > head.glb.b64.txt`).
+  async function fetchGLB(u){
+    let r=await fetch(u); if(r.ok) return r.arrayBuffer();
+    r=await fetch(u+".b64.txt"); if(!r.ok) throw new Error(u+" "+r.status);
+    const b=atob((await r.text()).replace(/\s+/g,"")), o=new Uint8Array(b.length); for(let i=0;i<b.length;i++)o[i]=b.charCodeAt(i); return o.buffer;
+  }
+  const [glbBuf, J] = await Promise.all([fetchGLB(glbURL),
+                                          fetch(jsonURL).then(r=>{if(!r.ok)throw new Error(jsonURL+" "+r.status);return r.json();})]);
+  const dv=new DataView(glbBuf);
+  if(dv.getUint32(0,true)!==0x46546C67) throw new Error("not a GLB");
+  const jl=dv.getUint32(12,true), json=JSON.parse(new TextDecoder().decode(new Uint8Array(glbBuf,20,jl)));
+  const bo=20+jl+8, bin=new Uint8Array(glbBuf, bo, dv.getUint32(20+jl,true));
+  const CT={5120:Int8Array,5121:Uint8Array,5122:Int16Array,5123:Uint16Array,5125:Uint32Array,5126:Float32Array};
+  const NC={SCALAR:1,VEC2:2,VEC3:3,VEC4:4};
+  function acc(i){ const a=json.accessors[i], bv=json.bufferViews[a.bufferView], T=CT[a.componentType], n=NC[a.type];
+    const off=bin.byteOffset+(bv.byteOffset||0)+(a.byteOffset||0), stride=bv.byteStride||0;
+    if(!stride||stride===n*T.BYTES_PER_ELEMENT) return new T(glbBuf, off, a.count*n);
+    const out=new T(a.count*n); for(let k=0;k<a.count;k++){ const v=new T(glbBuf, off+k*stride, n); out.set(v,k*n); } return out; }
+  const mesh=json.meshes.find(m=>m.name==="Head")||json.meshes[0], p=mesh.primitives[0], A=p.attributes;
+  const need=["POSITION","NORMAL","TEXCOORD_0","_JAW_WEIGHT","_HAIR_WEIGHT","_EYE_PART"].filter(k=>!(k in A));
+  if(need.length) throw new Error("head.glb is missing "+need.join(", "));
+  const names=(mesh.extras&&mesh.extras.targetNames)||[], ti=names.indexOf("Surprise");
+  if(ti<0||!p.targets||!p.targets[ti]) throw new Error('head.glb has no "Surprise" shape key');
+  const pos=new Float32Array(acc(A.POSITION)), nv=pos.length/3;
+  const idx0=acc(p.indices), idx=nv<=65535?new Uint16Array(idx0):new Uint32Array(idx0);
+  let texURL=null;
+  if(p.material!==undefined){ const m=json.materials[p.material], bt=m.pbrMetallicRoughness&&m.pbrMetallicRoughness.baseColorTexture;
+    if(bt){ const im=json.images[json.textures[bt.index].source];
+      if(im.uri) texURL=new URL(im.uri, glbURL, location.href).href;
+      else { const bv=json.bufferViews[im.bufferView]; texURL=URL.createObjectURL(new Blob([new Uint8Array(glbBuf, bin.byteOffset+(bv.byteOffset||0), bv.byteLength)],{type:im.mimeType})); } } }
+  const d=Object.assign({}, J, {nv, pos, nrm:new Float32Array(acc(A.NORMAL)), uv:new Float32Array(acc(A.TEXCOORD_0)), idx,
+    jaw:new Float32Array(acc(A._JAW_WEIGHT)), hairw:new Float32Array(acc(A._HAIR_WEIGHT)), kind:new Float32Array(acc(A._EYE_PART)),
+    expr:new Float32Array(acc(p.targets[ti].POSITION)), texURL:texURL||"basecolor.jpg"});
+  for(const k of ["pivot","cav","eyes","skin"]) if(!(k in d)) throw new Error("head.json is missing "+k);
+  d.mirrorX=d.mirrorX||0; d.eyeLine=d.eyeLine||[-0.005,0.035]; d.mouthCorner=d.mouthCorner||[0.035,0.065];
+  d.cheek=d.cheek||[0.15,-0.09]; d.irisScale=d.irisScale||0.86;
+  return d;
+}
+(async function () {
+const canvas=document.getElementById("gl"), stage=document.getElementById("stage");
+const hud=document.getElementById("hud"), veil=document.getElementById("veil"), meta=document.getElementById("meta");
+let D; try{ D=await loadHead("head.glb","head.json"); }catch(e){ veil.textContent="Could not load the head: "+e.message; console.error(e); return; }
+const glOpts={antialias:true,alpha:true,premultipliedAlpha:false,depth:true};
+const gl=canvas.getContext("webgl",glOpts)||canvas.getContext("experimental-webgl",glOpts);
+if(!gl){veil.textContent="This page needs WebGL, which your browser has turned off.";return;}
+
+const CFG={camZ:1.85, radius:0.16, maxStretch:0.42, forwardPull:0.28, pinchSharp:2.6,
+           springK:235, springC:12.5, pitchLimit:1.15, jawMax:0.30,
+           holdBelow:0.5, maxHeld:4, distLimit:1.4, wobbleExtra:4.2, heatWin:10, heatLook:2.5, heatShake:4.0, warnWin:8, pullsAfterWarn:1, spinCooldown:15, koCooldown:15, leanX:0.24, leanY:0.15,
+           idleFirst:[2,3], idleNext:[3,5], shakeOffAfter:3, dizzyR:0.035, wobA:0.22, wobRate:0.80, wobDrift:0.045, whirlWin:3, whirlTurns:1.0,
+           contactGap:4, danceAfter:10, danceReps:2, sleepAfter:18, sleepStill:5, showcaseAt:15, breath:3.8, idleAfterSpin:3, introLook:1.5, demoAfter:2.5, demoGap:8, demoMax:2,
+           musicFile:'', musicLen:0, musicFirst:0, bpm:105, musicVol:0.17, sfxVol:1.0, dragDuck:0.35,
+           idleJaw:0.13, rockYaw:0.06, bob:0.006, hairFlop:0.09, farAway:0.42, farReset:0.30};
+// The head's mirror line (x of the symmetry plane), from head.json.
+const XM=D.mirrorX;
+
+function perspective(f0,aspect,near,far){
+  const f=1/Math.tan(f0/2), nf=1/(near-far);
+  return new Float32Array([f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0]);
+}
+function rotMat(yaw,pitch){
+  const cy=Math.cos(yaw),sy=Math.sin(yaw),cx=Math.cos(pitch),sx=Math.sin(pitch);
+  return new Float32Array([cy,sy*sx,-sy*cx,0, 0,cx,sx,0, sy,-cy*sx,cy*cx,0, 0,0,0,1]);
+}
+const applyInv=(m,v)=>[m[0]*v[0]+m[1]*v[1]+m[2]*v[2], m[4]*v[0]+m[5]*v[1]+m[6]*v[2], m[8]*v[0]+m[9]*v[1]+m[10]*v[2]];
+
+const VS=`
+precision highp float;
+attribute vec3 aPos, aNormal;
+attribute vec2 aUV;
+attribute float aJaw, aKind, aHair;
+attribute vec3 aExpr;
+uniform mat4 uProj, uModel;
+uniform vec3 uCam, uPivot;
+uniform vec3 uGP[8], uPL[8];
+uniform float uRadius, uSharp, uJaw, uExprM, uExprC, uBrowL, uBrowR, uMX;
+uniform vec2 uEyeLine, uCornerX;
+uniform vec3 uHair;
+varying vec3 vNormal, vViewDir, vRest;
+varying vec2 vUV;
+varying float vStretch, vJaw, vKind;
+vec3 rotX(vec3 v, float a){ float c=cos(a), s=sin(a); return vec3(v.x, v.y*c - v.z*s, v.y*s + v.z*c); }
+void main(){
+  // Jaw: everything below the cut (the edge loop under the top teeth) swings down around a
+  // hinge behind the mouth. The two copies of the loop carry different weights, so it opens.
+  // Expression shape (brows up, cheeks up, nostrils and mouth corners pulled) and hair flop are
+  // added first; the jaw and the grab act on top. Everything is keyed to the rest position.
+  // The one expression shape is split at the eye line: below it (mouth, nostrils, cheeks) follows
+  // uExprM; above it (brows, forehead) follows uBrowL / uBrowR, blended across the middle.
+  float up=smoothstep(uEyeLine.x,uEyeLine.y,aPos.y);
+  float side=smoothstep(0.03,-0.03,aPos.x-uMX);
+  float brow=mix(uBrowR,uBrowL,side);
+  // the middle of the mouth (upper lip, top teeth) has its own weight; the corners keep uExprM
+  float mouthW=mix(uExprC,uExprM,smoothstep(uCornerX.x,uCornerX.y,abs(aPos.x-uMX)));
+  vec3 shaped=aPos+aExpr*mix(mouthW,brow,up)+uHair*aHair;
+  float a=uJaw*aJaw;
+  vec3 pos=uPivot+rotX(shaped-uPivot,a);
+  vec3 nrm=rotX(aNormal,a);
+  // Stretch is computed from the REST position, so seam copies always move together.
+  // Up to 8 pulls at once: the one being dragged, ones snapping home, and small ones being held.
+  float inv=1.0/(uRadius*uRadius);
+  vec3 bend=vec3(0.0); float st=0.0;
+  for(int i=0;i<8;i++){
+    vec3 gd=aPos-uGP[i];
+    float w=exp(-uSharp*dot(gd,gd)*inv);
+    pos+=uPL[i]*w;
+    bend+=gd*(-2.0*uSharp*inv*w)*dot(uPL[i],nrm);
+    st+=w*length(uPL[i]);
+  }
+  nrm=normalize(nrm-bend);
+  vStretch=st;
+  vUV=aUV; vJaw=aJaw; vRest=aPos; vKind=aKind;
+  vec4 world=uModel*vec4(pos,1.0);
+  vNormal=normalize(mat3(uModel[0].xyz,uModel[1].xyz,uModel[2].xyz)*nrm);
+  vViewDir=normalize(uCam-world.xyz);
+  gl_Position=uProj*vec4(world.xyz-uCam,1.0);
+}`;
+const FS=`
+precision highp float;
+uniform sampler2D uTex;
+uniform float uPainted, uCav, uSoft, uMX;
+uniform vec3 uSkin;
+varying vec3 vNormal,vViewDir,vRest;
+varying vec2 vUV;
+varying float vStretch, vJaw, vKind;
+
+// ---- Eyes: drawn analytically (same design as the Nomad test) ----
+// The model's own eyeballs and lash strips are kept as geometry, but their paint is
+// replaced: everything is coloured from the rest position, so the eyes stretch with the face.
+uniform vec4 uE0, uE1;      // centre x,y,z (rest space) and tilt
+uniform vec2 uAB0, uAB1;    // opening ellipse semi-axes
+uniform vec2 uG0, uG1;      // iris offset per eye
+uniform float uBlink, uIrisK, uOuter0, uOuter1, uWide;
+uniform vec2 uLook;
+float aa(float d, float w){ return clamp(0.5 - d/w, 0.0, 1.0); }
+float segDist(vec2 p, vec2 a, vec2 b){ vec2 pa=p-a, ba=b-a; float h=clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0); return length(pa-ba*h); }
+float gSkinW;
+vec4 eye(vec4 E, vec2 AB, vec2 G, float outer, float own){
+  gSkinW=own;
+  vec3 skin=uSkin;
+  if(own<0.5 && vRest.z < E.z-0.035) return vec4(0.0);
+  vec2 q=vRest.xy-E.xy; float c=cos(E.w), s=sin(E.w);
+  vec2 p=vec2(c*q.x+s*q.y, -s*q.x+c*q.y);
+  // surprise: the opening grows taller and the lid lifts off the iris
+  float a=AB.x, b=AB.y;
+  if(abs(p.x)>a*1.5 || abs(p.y)>b*2.0) return own>0.5? vec4(skin,1.0) : vec4(0.0);
+  float skinW=own;
+  vec2 n=p/vec2(a,b);
+  float r=length(n);
+  float W=0.035;
+  float inside=aa(r-1.0,W);
+  float yt=sqrt(max(0.0,1.0-n.x*n.x));
+  float drop=max(uBlink, 0.18*max(0.0,-uLook.y));
+  float yRest=yt-0.16*(1.0-0.85*uWide)*smoothstep(1.0,0.2,abs(n.x));
+  float yClosed=-0.50*(1.0-n.x*n.x)+0.02;
+  float ye=mix(yRest, yClosed, drop);
+  float belowLid=aa(n.y-ye, W);
+  float yLow=mix(-yt-0.05, yClosed-0.015, smoothstep(0.25,1.0,drop));
+  belowLid*=aa(yLow-n.y, W);
+  vec3 ball=vec3(0.965,0.955,0.945);
+  ball*=1.0-0.22*smoothstep(-0.45,0.0,n.y-ye);
+  ball*=1.0-0.08*smoothstep(0.55,1.0,r);
+  float ir=AB.y*uIrisK*(1.0-0.10*uWide);
+  vec2 ip=(p-G)/ir;
+  ip.x*=1.0+0.20*abs(uLook.x); ip.y*=1.0+0.15*abs(uLook.y);
+  float ri=length(ip);
+  vec3 irisC=mix(vec3(0.52,0.31,0.13), vec3(0.30,0.16,0.06), smoothstep(0.35,0.95,ri));
+  irisC=mix(irisC, vec3(0.16,0.08,0.03), smoothstep(0.86,0.98,ri));
+  irisC=mix(vec3(0.05,0.035,0.03), irisC, smoothstep(0.40,0.46,ri));
+  float ia=aa(ri-1.0, 0.06);
+  vec3 eyeC=mix(ball, irisC*(1.0-0.25*smoothstep(-0.45,0.0,n.y-ye)), ia);
+  float h1=aa(length(ip-vec2(-0.32,0.38))-0.20, 0.05), h2=aa(length(ip-vec2(0.30,-0.30))-0.08, 0.05);
+  eyeC=mix(eyeC, vec3(1.0), max(h1,h2*0.8)*ia);
+  // the eyeball and lash geometry always take the eye colours (lid skin where the eye is covered)
+  vec3 col=skin; float alpha=own;
+  float ballA=inside*belowLid;
+  col=mix(col,eyeC,ballA); alpha=max(alpha,ballA); skinW*=1.0-ballA;
+  float lowLine=aa(abs(n.y+yt)-0.06, 0.05)*smoothstep(0.98,0.6,abs(n.x))*step(n.y,0.0);
+  col=mix(col, skin*0.62, lowLine*0.55); alpha=max(alpha,lowLine*0.55); skinW*=1.0-lowLine*0.55;
+  float th=mix(mix(0.12,0.20,drop),0.34, smoothstep(0.98,0.15,abs(n.x)))*(1.0-0.25*drop);
+  float band=aa(abs(n.y-(ye+th*0.5-0.02))-th*0.5, W*0.9)*aa(abs(n.x)-1.05, W);
+  float wt=clamp((n.x*outer-0.96)/0.38,0.0,1.0);
+  float wing=aa(segDist(n, vec2(outer*0.96, 0.02), vec2(outer*1.34, 0.40)) - mix(0.12,0.02,wt), W)*step(0.80,n.x*outer);
+  float liner=band*smoothstep(1.03,0.86,abs(n.x));   // wing removed (the artist: the cat-eye flick did not match the model)
+  col=mix(col, vec3(0.055,0.04,0.04), liner); alpha=max(alpha,liner); skinW*=1.0-liner;
+  gSkinW=skinW;
+  return vec4(col,alpha);
+}
+
+void main(){
+  vec3 N=normalize(vNormal);
+  vec3 kd=normalize(vec3(-0.45,0.62,0.80)), fd=normalize(vec3(0.72,0.10,0.55));
+  float key=max(dot(N,kd),0.0), fill=max(dot(N,fd),0.0);
+  if(uCav>0.5){
+    N=-normalize(vNormal); key=max(dot(N,kd),0.0);
+    // Inner mouth: dark throat, warmer floor (tongue) on the jaw half.
+    vec3 throat=vec3(0.16,0.035,0.045), tongue=vec3(0.55,0.17,0.19);
+    vec3 base=mix(throat,tongue,smoothstep(0.35,0.9,vJaw));
+    float facing=max(dot(N,normalize(vViewDir)),0.0);
+    gl_FragColor=vec4(base*(0.35+0.55*key+0.25*facing),1.0);
+    return;
+  }
+  float rim=pow(1.0-max(dot(N,normalize(vViewDir)),0.0),2.6);
+  if(vKind>1.5) discard;   // the model's own lash strips: replaced by the drawn liner
+  vec3 tex=texture2D(uTex,vUV).rgb;
+  vec4 ey = vRest.x<uMX ? eye(uE0,uAB0,uG0,uOuter0,vKind) : eye(uE1,uAB1,uG1,uOuter1,vKind);
+  vec3 base=mix(vec3(0.80,0.74,0.68),tex,uPainted);
+  // Two looks blended by uSoft: the contrasty studio light used so far, and a flatter, brighter
+  // light closer to a 3D generator's preview (more ambient, wrapped key, almost no rim).
+  float wrap=max((dot(N,kd)+0.45)/1.45,0.0);
+  vec3 lightHard=vec3(0.50)+vec3(1.00,0.96,0.90)*key*0.58+vec3(0.55,0.68,1.00)*fill*0.22;
+  vec3 lightSoft=vec3(0.80)+vec3(1.00,0.97,0.93)*wrap*0.30+vec3(0.60,0.70,1.00)*fill*0.06;
+  vec3 light=mix(lightHard,lightSoft,uSoft);
+  vec3 col=base*light;
+  col+=vec3(0.42,0.55,1.00)*rim*mix(0.18,0.05,uSoft);
+  col+=vec3(1.00,0.42,0.30)*clamp(vStretch,0.0,1.0)*0.12*(1.0-uPainted*0.5);
+  // eyes are lit almost flat, so the shape of the eyeball geometry doesn't show through them
+  // ...but lid skin is lit like the rest of the face so a closed eye blends in
+  vec3 eyeLit=mix(ey.rgb*(0.88+0.14*key), uSkin*light, gSkinW);
+  col=mix(col, eyeLit, ey.a*uPainted);
+  gl_FragColor=vec4(min(col,vec3(1.0)),1.0);
+}`;
+function compile(t,src){const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;}
+const prog=gl.createProgram();
+gl.attachShader(prog,compile(gl.VERTEX_SHADER,VS)); gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,FS));
+gl.linkProgram(prog); if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const A={expr:gl.getAttribLocation(prog,"aExpr"),hair:gl.getAttribLocation(prog,"aHair"),pos:gl.getAttribLocation(prog,"aPos"),normal:gl.getAttribLocation(prog,"aNormal"),
+         uv:gl.getAttribLocation(prog,"aUV"),jaw:gl.getAttribLocation(prog,"aJaw"),kind:gl.getAttribLocation(prog,"aKind")};
+const U={};
+["uExprM","uExprC","uBrowL","uBrowR","uHair","uSoft","uProj","uModel","uCam","uGP","uPL","uPivot","uRadius","uSharp","uJaw","uTex","uPainted","uCav","uSkin",
+ "uWide","uE0","uE1","uAB0","uAB1","uG0","uG1","uBlink","uIrisK","uOuter0","uOuter1","uLook","uMX","uEyeLine","uCornerX"].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+
+function upload(d,t){const b=gl.createBuffer();gl.bindBuffer(t,b);gl.bufferData(t,d,gl.STATIC_DRAW);return b;}
+function part(pos,nrm,uv,jaw,kind,idx,expr,hair){
+  const nv=pos.length/3; expr=expr||new Float32Array(nv*3); hair=hair||new Float32Array(nv);
+  return {expr:upload(expr,gl.ARRAY_BUFFER),hair:upload(hair,gl.ARRAY_BUFFER),pos:upload(pos,gl.ARRAY_BUFFER),nrm:upload(nrm,gl.ARRAY_BUFFER),uv:upload(uv,gl.ARRAY_BUFFER),
+          jaw:upload(jaw,gl.ARRAY_BUFFER),kind:upload(kind,gl.ARRAY_BUFFER),idx:upload(idx,gl.ELEMENT_ARRAY_BUFFER),n:idx.length,
+          type:idx instanceof Uint32Array?gl.UNSIGNED_INT:gl.UNSIGNED_SHORT};
+}
+const hp=D.pos, hn=D.nrm, hu=D.uv, hj=D.jaw, hk=D.kind, hi=D.idx;
+if(hi instanceof Uint32Array && !gl.getExtension("OES_element_index_uint")){ veil.textContent="This head has more than 65,535 points and this browser can't draw that."; return; }
+const HEAD=part(hp,hn,hu,hj,hk,hi,D.expr,D.hairw);
+// Inner mouth shell: an ellipsoid inside the head behind the teeth; its lower half rides the jaw.
+function cavity(c,r,nu,nv){
+  const P=[],Nn=[],J=[],T=[];
+  for(let i=0;i<=nu;i++){const th=Math.PI*i/nu;
+    for(let j=0;j<=nv;j++){const ph=2*Math.PI*j/nv;
+      const x=Math.sin(th)*Math.cos(ph), y=Math.cos(th), z=Math.sin(th)*Math.sin(ph);
+      P.push(c[0]+x*r[0],c[1]+y*r[1],c[2]+z*r[2]);
+      const nx=x/r[0],ny=y/r[1],nz=z/r[2],L=Math.hypot(nx,ny,nz); Nn.push(nx/L,ny/L,nz/L);
+      const t=Math.min(Math.max((0.15-y)/0.5,0),1); J.push(t*t*(3-2*t));
+    }}
+  for(let i=0;i<nu;i++)for(let j=0;j<nv;j++){const a=i*(nv+1)+j,b=a+nv+1;T.push(a,b,a+1,b,b+1,a+1);}
+  const n=J.length;
+  return part(new Float32Array(P),new Float32Array(Nn),new Float32Array(n*2),new Float32Array(J),new Float32Array(n),new Uint16Array(T));
+}
+const CAV=cavity(D.cav.c,D.cav.r,28,40);
+meta.textContent=`${(hi.length/3).toLocaleString()} triangles · cut along the edge loop under the top teeth`;
+veil.classList.add("gone");
+setTimeout(()=>showLight(),0);
+
+const tex=gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D,tex);
+gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([200,190,180,255]));
+let painted=0, paintOn=true, holdOpen=false;
+const img=new Image();
+img.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,tex);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);painted=1;};
+img.src=D.texURL;
+window.addEventListener("keydown",e=>{const k=e.key.toLowerCase();
+  if(k==="c")paintOn=!paintOn; if(k==="r")startSpin(); if(k==="e")playScoot(0); if(k==="w")playScoot(1); if(k==="i")playIntro(); if(k==="t")playTilt(); if(k==="z")fallAsleep(); if(k==="d")playDizzy(); if(k==="a")playDance(false); if(k==="n")playNo("annoyed"); if(k==="1")playFace("wow",1.2); if(k==="2")playFace("grin",1.2); if(k==="3")playFace("skeptic",1.2); if(k==="m")setMusic(!musicOn); if(k==="s")setSound(!soundOn); if(k==="o")holdOpen=!holdOpen; if(k==="b")triggerBlink();
+  if(k==="l"){lightIdx=(lightIdx+1)%LIGHTS.length; showLight();}});
+// Lighting looks: L cycles. 0.5 is the default split between the studio light and the flatter generator-style light.
+const LIGHTS=[{v:1,n:"soft light"},{v:0.5,n:"in-between light"},{v:0,n:"contrast light"}];
+let lightIdx=0;
+function showLight(){meta.textContent=`${(hi.length/3).toLocaleString()} triangles · ${LIGHTS[lightIdx].n} · L to change`;}
+function raycast(o,d){
+  let best=Infinity,hit=null; const Pp=hp,I=hi;
+  for(let t=0;t<I.length;t+=3){
+    const a=I[t]*3,b=I[t+1]*3,c=I[t+2]*3, ax=Pp[a],ay=Pp[a+1],az=Pp[a+2];
+    const e1x=Pp[b]-ax,e1y=Pp[b+1]-ay,e1z=Pp[b+2]-az, e2x=Pp[c]-ax,e2y=Pp[c+1]-ay,e2z=Pp[c+2]-az;
+    const px=d[1]*e2z-d[2]*e2y,py=d[2]*e2x-d[0]*e2z,pz=d[0]*e2y-d[1]*e2x;
+    const det=e1x*px+e1y*py+e1z*pz; if(det>-1e-12&&det<1e-12)continue;
+    const inv=1/det,tx=o[0]-ax,ty=o[1]-ay,tz=o[2]-az, u=(tx*px+ty*py+tz*pz)*inv; if(u<0||u>1)continue;
+    const qx=ty*e1z-tz*e1y,qy=tz*e1x-tx*e1z,qz=tx*e1y-ty*e1x, v=(d[0]*qx+d[1]*qy+d[2]*qz)*inv;
+    if(v<0||u+v>1)continue;
+    const dist=(e2x*qx+e2y*qy+e2z*qz)*inv;
+    if(dist>1e-5&&dist<best){best=dist;hit=[o[0]+d[0]*dist,o[1]+d[1]*dist,o[2]+d[2]*dist];}
+  }
+  return hit;
+}
+const ss=(a,b,x)=>{const t=Math.min(Math.max((x-a)/(b-a),0),1);return t*t*(3-2*t);};
+const easeOut=t=>1-Math.pow(1-t,3);
+const easeInOut=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const len3=v=>Math.hypot(v[0],v[1],v[2]);
+const pick=a=>a[(Math.random()*a.length)|0];
+
+// ---- Head transform: rotation (yaw, pitch, roll), uniform scale and translation ----
+// world = T + scale * R * pos. R is kept separately so rays can be taken back into model space.
+function mul4(a,b){const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k];o[c*4+r]=s;}return o;}
+function rotZ(a){const c=Math.cos(a),s=Math.sin(a);return new Float32Array([c,s,0,0, -s,c,0,0, 0,0,1,0, 0,0,0,1]);}
+const S={yaw:0,pitch:0,yawT:0,pitchT:0,idleX:0,idleY:0,rotating:false,last:null,jaw:0};
+const T=[0,0,0]; let ROT=rotMat(0,0), SCALE=1, MODEL=rotMat(0,0), YAW=0;
+let lastProj=perspective(.72,1,.1,100);
+function ndc(ev){const r=canvas.getBoundingClientRect();return [(ev.clientX-r.left)/r.width*2-1,-((ev.clientY-r.top)/r.height*2-1)];}
+function ray(ev){const [nx,ny]=ndc(ev),m=ROT,s=Math.max(SCALE,0.05);
+  const o=applyInv(m,[-T[0],-T[1],CFG.camZ-T[2]]).map(v=>v/s);
+  const d=applyInv(m,[nx/lastProj[0],ny/lastProj[5],-1]),L=Math.hypot(d[0],d[1],d[2]);return {o,d:[d[0]/L,d[1]/L,d[2]/L],m};}
+
+// ---- Stretch slots ----
+// Every pull lives in a slot: "active" (being dragged), "snap" (springing home), "held" (a small pull
+// left where it was, so you can pose the face), "spin" (melting away during the spin reset).
+const SL=[]; let active=null;
+function trimSlots(){
+  // held poses are never released here; too much distortion sets off the spin instead (see overDistorted)
+  while(SL.length>8){const i=SL.findIndex(s=>s.mode==="snap"); if(i<0)break; SL.splice(i,1);}
+}
+// Total distortion: how far every held pull is stretched, added up (in units of max stretch).
+function distortion(){ let d=0,n=0; for(const q of SL) if(q.mode==="held"){ d+=len3(q.hold)/CFG.maxStretch; n++; } return {d,n}; }
+function overDistorted(){ const {d,n}=distortion(); return n>CFG.maxHeld || d>=CFG.distLimit; }
+// "Uh-oh": eyes go wide for half a second, then it spins it all off. Grabs are blocked meanwhile.
+let spinPending=false;
+function uhOhSpin(){ if(spinPending||SP.on)return; spinPending=true; heatLevel=0; HEAT.length=0; pullsSinceWarn=0; warnedAt=-1e9;
+  playFace("wow",0.5); lookAtYou(0.6,true); triggerBlink(); sfx("look");
+  const go=()=>{ if(INTRO.on){ setTimeout(go,200); return; } spinPending=false; lastSpinAt=performance.now(); startSpin(); }; setTimeout(go,550);
+}
+
+// ---- Faces: blend-shape style nudges built from the one expression shape the model carries ----
+// The shape is split at the eye line: "mouth" is everything below (lip, corners, nostrils, cheeks),
+// browL/browR are the brows and forehead on each side. Negative values push the other way:
+// mouth -1 pulls the corners up and out (a bigger grin), brow -1 lowers the brows.
+// "center" drives just the middle of the mouth (upper lip and top teeth lift); it defaults to "mouth".
+// The "oh" keeps the middle down so the lip covers the teeth while the corners round in.
+const POSES={
+  wow:    {mouth: 0.00, center: 0.00, browL: 0.85, browR: 0.85, jaw:0.00, wide:0.55, lid:0.00},  // brows up, eyes wide, mouth left alone
+  grin:   {mouth:-0.85, browL: 0.30, browR: 0.30, jaw:0.00, wide:0.00, lid:0.20},  // happy squint
+  skeptic:{mouth:-0.30, browL: 1.30, browR:-0.65, jaw:0.00, wide:0.10, lid:0.14},  // one brow up
+  effort: {mouth:-0.40, browL:-0.55, browR:-0.55, jaw:0.04, wide:0.00, lid:0.36},  // straining
+  annoyed:{mouth: 0.70, center:-0.90, browL:-1.20, browR:-1.20, jaw:0.00, wide:0.00, lid:0.50},  // "no" head shake: hard frown, eyes narrowed
+  shut:   {mouth: 0.50, center:-0.80, browL:-0.90, browR:-0.90, jaw:0.00, wide:0.00, lid:0.92},
+  dazed:  {mouth: 0.40, center:-0.30, browL: 0.70, browR:-0.25, jaw:0.22, wide:0.00, lid:0.00},  // slack and lopsided
+  sleepy: {mouth: 0.45, center:-0.70, browL: 0.20, browR: 0.20, jaw:0.00, wide:0.00, lid:0.00},  // relaxed while asleep
+  yawn:   {mouth: 0.90, center: 0.20, browL: 0.50, browR: 0.50, jaw:0.85, wide:0.00, lid:0.95},  // big yawn, eyes squeezed  // shaking it off: eyes squeezed shut
+};
+const FACES=[];   // {pose, t, dur, hold}
+function playFace(name,hold){ for(const f of FACES) if(f.t<f.up+f.hold) f.hold=Math.max(0,f.t-f.up);
+  FACES.push({p:POSES[name],t:0,up:0.18,hold:hold,down:0.35}); }
+const FACE={teeth:0,mouth:0,center:0,browL:0,browR:0,jaw:0,wide:0,lid:0};
+for(const k in POSES){ if(POSES[k].center===undefined) POSES[k].center=POSES[k].mouth; if(POSES[k].teeth===undefined) POSES[k].teeth=0; }
+
+// Interaction count: grabs and taps add up; it drains while the head is left alone.
+let mess=0;  // (old counter, no longer used)
+// "Heat": what you've done in the last few seconds. It escalates it reactions:
+// a look, then a "no" head shake, then the spin. It cools off on its own once you stop.
+const HEAT=[]; let heatLevel=0, lastInteract=performance.now();
+function heat(now){ while(HEAT.length&&now-HEAT[0].t>CFG.heatWin*1000)HEAT.shift(); let h=0; for(const e of HEAT)h+=e.w; return h; }
+function addHeat(w){ HEAT.push({t:performance.now(),w}); }
+// The spin has to be earned: it warns you with the "no" shake first, and only spins if you keep pulling
+// right after the warning. After a spin there's a cooldown; pushing it then just gets another "no".
+let warnedAt=-1e9, pullsSinceWarn=0, lastSpinAt=-1e9, lastNoAt=-1e9, lastKoAt=-1e9;
+function reactToHeat(big){
+  const now=performance.now(), h=heat(now), warned=now-warnedAt<CFG.warnWin*1000;
+  if(big&&warned) pullsSinceWarn++;
+  if(warned&&pullsSinceWarn>=CFG.pullsAfterWarn){
+    // KO: one more big yank after the warning knocks it dizzy (the spin is saved for too much held distortion)
+    if(now-lastKoAt>CFG.koCooldown*1000){ heatLevel=0; HEAT.length=0; pullsSinceWarn=0; warnedAt=-1e9; lastKoAt=now; setTimeout(()=>{ if(!active) playDizzy(); },420); return; }
+    if(now-lastNoAt>6000){ lastNoAt=now; warnedAt=now; pullsSinceWarn=0; setTimeout(()=>playNo("annoyed"),380); return; }
+  }
+  if(h>=CFG.heatShake&&heatLevel<2){ heatLevel=2; warnedAt=now; pullsSinceWarn=0; lastNoAt=now; setTimeout(()=>playNo("annoyed"),380); return; }
+  if(h>=CFG.heatLook&&heatLevel<1){ heatLevel=1; setTimeout(()=>{ playFace("skeptic",1.0); lookAtYou(1.1,true); sfx("look"); },260); }
+}
+// "No" head shake: three quick side-to-side shakes. "annoyed" = brows down;
+// "shakeoff" = it shakes off any held poses (they wobble loose and spring home), then grins.
+const NO={on:false,t:0,kind:"",released:false};
+function playNo(kind){ if(SP.on||INTRO.on||active)return; stopIdleAnim(); NO.on=true; NO.t=0; NO.kind=kind; NO.released=false;
+  playFace(kind==="shakeoff"?"shut":"annoyed",0.7); sfx("no"); }
+// Dizzy: the head drifts around a small circle (like the tip of a clock hand, not spinning),
+// the irises trace a tiny circle, lids half closed. Part of the spin recovery; D plays it alone.
+const DZ={w:0,th:0}, DZS={on:false,t:0,dur:1.8};   // DZ/DZS = the "dance": head drifts around a small circle
+// ---- Sleep: left alone long enough, it yawns, nods off (catching herself once), and sleeps with it head
+// tipped to one side, breathing slowly, snoring, Z's floating up. Moving the pointer or clicking startles it awake.
+const SLEEP={phase:"",t:0,w:0,p:0,r:0,jaw:0,ty:0,cycle:-1,caught:false,from:null};
+let lastActivity=performance.now(), moveAccum=0;
+function fallAsleep(){ if(SLEEP.phase||SP.on||INTRO.on||active)return; stopIdleAnim(); danceLoop=false; DZS.on=false;
+  SLEEP.phase="drowsy"; SLEEP.t=0; SLEEP.caught=false; SLEEP.cycle=-1; playFace("yawn",0.65); sfx("yawn"); musicLevel(0.5,3); }
+function wakeUp(){ if(SLEEP.phase!=="drowsy"&&SLEEP.phase!=="asleep")return false;
+  SLEEP.from={p:SLEEP.p,r:SLEEP.r}; SLEEP.phase="wake"; SLEEP.t=0; FACES.length=0; playFace("wow",0.55); sfx("snort");
+  setTimeout(triggerBlink,380); setTimeout(triggerBlink,720); lookAtYou(1.4,true); musicLevel(1,1.2);
+  setTimeout(()=>{ if(SL.some(q=>q.mode==="held")) playNo("shakeoff"); else playFace("grin",0.8); },1050); return true; }
+function quietNow(){ return !(active||SP.on||S.rotating||INTRO.on||idleAnim||TILT.on||NO.on||DIZ.on); }
+// Dance: it "left alone for a while" loop. Timed to the track's 126 BPM: the head drifts around a circle
+// every two beats with a bob on each beat, holds your gaze, and music notes float off. Loops until you interact.
+const BEAT=60/CFG.bpm; let danceLoop=false, danceLeft=0, danceDoneFor=-1;
+function playDance(loop){ if(SP.on||INTRO.on||active||SLEEP.phase)return; stopIdleAnim(); DZS.on=true; DZS.dur=BEAT*8;
+  const mb=musicBeats(); DZS.t=mb===null?0:(mb%1)*BEAT;   // start in phase with the music
+  SEEN.dance=true; if(loop===true){ danceLoop=true; danceLeft=CFG.danceReps; } playFace("grin",DZS.dur-0.4); }
+// First-visit showcase: if it hasn't danced by ~15 s in, it does one phrase on it own at the next quiet moment.
+const SEEN={dance:false,spin:false}, T_LOAD=performance.now();
+// Dizzy (fighting-game stun). With no body, the loop has to read from the front: the head leans and drifts
+// around a circle on screen (rising as it tips back), slowing as it winds down. The face goes slack, the
+// irises circle the other way (no pointer tracking), stars circle above the cap. It ends with a quick
+// "brrr" shake and a look straight at you. Triggered by whirling it around (dragging the background a lot).
+const WB={w:0,th:0,shake:0}, DIZ={on:false,t:0,dur:3.4,wob:2.8};
+function playDizzy(){ if(SP.on||INTRO.on||active)return; stopIdleAnim(); DIZ.on=true; DIZ.t=0; DIZ.shook=false;
+  S.yawT=Math.round(S.yaw/(Math.PI*2))*Math.PI*2; S.pitchT=0; playFace("dazed",DIZ.wob-0.5); sfx("dizzy"); }
+const WHIRL=[];
+const SP={on:false,t0:0,dur:1.9,turns:3,settle:1.0,shake:0.7,after:0.8};
+function startSpin(){
+  if(SP.on||INTRO.on)return; endDemo(); SP.on=true; SP.t0=performance.now(); active=null; stopIdleAnim();
+  stage.classList.remove("pinching"); S.rotating=false;
+  for(const s of SL){s.mode="spin"; s.p0=s.pull.slice();}
+  SEEN.spin=true;
+  S.yawT=0; S.pitchT=0; triggerBlink(); sfx("spin"); duckMusic(0.3,2.8);
+}
+
+// ---- Intro: the head grows in from a point with a big bouncy rock and tilt, then settles ----
+const INTRO={on:false,t:0,dur:4.6};
+// Tilt: the intro's bouncy head tilt and grin on its own, used in the idle rotation (T plays it).
+const TILT={on:false,t:0,faced:false};
+function playTilt(){ if(SP.on||active||INTRO.on||idleAnim||TILT.on)return; TILT.on=true; TILT.t=0; TILT.faced=false; triggerBlink(); sfx("tilt"); }
+function playIntro(){
+  endDemo(); INTRO.on=true; INTRO.t=0; SP.on=false; SP.landed=false; active=null; stopIdleAnim(); FACES.length=0;
+  SL.length=0; mess=0; S.yawT=S.pitchT=0; S.yaw=S.pitch=0; idleFor=0; INTRO.popped=false;
+}
+
+stage.addEventListener("pointerdown",ev=>{
+  ensureAudio(); pointerMoved=true; if(DEMO.on)endDemo();
+  stage.setPointerCapture(ev.pointerId); hud.classList.add("dim");
+  idleFor=0; nextIdle=CFG.idleFirst[0]+Math.random()*(CFG.idleFirst[1]-CFG.idleFirst[0]); lastInteract=performance.now();
+  danceLoop=false; DZS.restart=0; lastActivity=performance.now();
+  if(wakeUp())return;
+  if(SP.on||spinPending||SLEEP.phase==="wake")return; stopIdleAnim(); NO.on=false; DZS.on=false; DIZ.on=false;
+  const {o,d,m}=ray(ev),hit=raycast(o,d);
+  if(hit){
+    triggerBlink(); stage.classList.add("pinching"); DEMO.grabbed=true;
+    let s=SL.find(q=>q.mode==="held"&&Math.hypot(q.p[0]-hit[0],q.p[1]-hit[1],q.p[2]-hit[2])<CFG.radius*0.7);
+    if(!s){s={p:hit,pull:[0,0,0],vel:[0,0,0]}; SL.push(s);}
+    s.mode="active"; s.base=s.pull.slice(); s.planeP=hit; s.planeN=applyInv(m,[0,0,-1]);
+    s.t0=performance.now(); s.sx=ev.clientX; s.sy=ev.clientY; s.moved=0;
+    // How the face reacts to this grab varies, so the mouth isn't the same every time.
+    // Grabs on the chin and lips still open the mouth; elsewhere it's a roll of the dice.
+    const nearMouth=hit[1]<-0.12 && Math.abs(hit[0])<0.2;
+    const r=Math.random();
+    s.react = nearMouth ? {mouth:0.8+0.2*Math.random(), face:null}
+            : r<0.40 ? {mouth:1, face:null}
+            : r<0.75 ? {mouth:0.3+0.25*Math.random(), face:null}
+            :          {mouth:0.06, face:"effort"};
+    s.lag=0.06+Math.random()*0.22;
+    active=s; trimSlots(); sfxDragStart();
+  } else {S.rotating=true;S.last=[ev.clientX,ev.clientY];}
+});
+stage.addEventListener("pointermove",ev=>{
+  if(active){
+    const s=active, now=performance.now(); s.moved=Math.max(s.moved,Math.hypot(ev.clientX-s.sx,ev.clientY-s.sy));
+    const {o,d}=ray(ev),N=s.planeN,Q=s.planeP,den=d[0]*N[0]+d[1]*N[1]+d[2]*N[2]; if(Math.abs(den)<1e-6)return;
+    const t=((Q[0]-o[0])*N[0]+(Q[1]-o[1])*N[1]+(Q[2]-o[2])*N[2])/den; if(t<=0)return;
+    let dx=o[0]+d[0]*t-Q[0]+s.base[0],dy=o[1]+d[1]*t-Q[1]+s.base[1],dz=o[2]+d[2]*t-Q[2]+s.base[2];
+    const len=Math.hypot(dx,dy,dz);
+    if(len>1e-5){const cap=CFG.maxStretch*Math.tanh(len/CFG.maxStretch),k=cap/len;dx*=k;dy*=k;dz*=k;}
+    const fwd=CFG.forwardPull*Math.hypot(dx,dy,dz); dx-=N[0]*fwd;dy-=N[1]*fwd;dz-=N[2]*fwd;
+    const sp=Math.hypot(dx-s.pull[0],dy-s.pull[1],dz-s.pull[2])/Math.max(1e-3,(now-(s.lastMove||now-16))/1000);
+    s.lastMove=now; s.speed=sp;
+    s.vel=[(dx-s.pull[0])*8,(dy-s.pull[1])*8,(dz-s.pull[2])*8]; s.pull=[dx,dy,dz];
+    if(!s.contacted&&now-s.t0>500&&len3(s.pull)/CFG.maxStretch>0.25){ s.contacted=true; maybeLook(0.35,0.5); }
+    sfxDragUpdate(len3(s.pull)/CFG.maxStretch, Math.min(1,sp/0.5)); return;
+  }
+  if(S.rotating){const dx=ev.clientX-S.last[0],dy=ev.clientY-S.last[1];S.last=[ev.clientX,ev.clientY]; const rs=Math.max(0.007,5.5/Math.max(1,innerWidth)); WHIRL.push({t:performance.now(),a:Math.abs(dx*rs)});
+    S.yawT+=dx*rs;S.pitchT=Math.max(-CFG.pitchLimit,Math.min(CFG.pitchLimit,S.pitchT-dy*.006));return;}
+  const [nx,ny]=ndc(ev);S.idleX=nx*CFG.leanX;S.idleY=ny*CFG.leanY;
+});
+function release(){
+  if(S.rotating){ const now=performance.now(); let sum=0; for(const w of WHIRL) if(now-w.t<CFG.whirlWin*1000) sum+=w.a;
+    WHIRL.length=0; if(sum>CFG.whirlTurns*Math.PI*2){ lastInteract=now; setTimeout(playDizzy,180); } }
+  S.rotating=false; stage.classList.remove("pinching"); sfxDragStop();
+  const s=active; active=null; if(!s)return; lastInteract=performance.now(); GLOVE.flickUntil=performance.now()+220;
+  const now=performance.now(), mag=len3(s.pull)/CFG.maxStretch, grew=len3(s.pull)-len3(s.base); let big=false;
+  if(s.moved<6 && now-s.t0<350 && Math.abs(grew)<0.01){
+    // Tap: a quick boop. The spot dips in and wobbles back out; sometimes a "wow", sometimes a grin.
+    const N=s.planeN; s.mode="snap"; s.c=CFG.springC; s.vel=[N[0]*1.35+s.vel[0],N[1]*1.35+s.vel[1],N[2]*1.35+s.vel[2]];
+    burst(toScreen(s.p),7,0.55); kick(0.5); addHeat(0.5); sfx("boop"); GLOVE.pokeUntil=performance.now()+260;
+    const r=Math.random(); if(r<0.45)playFace("wow",0.55); else if(r<0.7)playFace("grin",0.6); maybeLook(0.3,0.6,120);
+  } else if(mag<CFG.holdBelow){
+    // Small pull: it stays where you left it, so you can pose the face. A tiny settle sells it.
+    s.mode="held"; s.hold=s.pull.slice(); s.vel=s.vel.map(v=>v*0.25); sfx("tick"); addHeat(0.6); trimSlots();
+    if(overDistorted()){ lastInteract=performance.now(); setTimeout(uhOhSpin,180); return; }
+    if(Math.random()<0.35)playFace("grin",0.8); maybeLook(0.4,0.7,150);
+  } else {
+    // Big pull: the spring snap. The wobble grows with how far it was pulled.
+    s.mode="snap"; s.c=CFG.springC-CFG.wobbleExtra*Math.min(1,mag); big=true;
+    // a long pull resets the whole face: every held pose springs home too
+    for(const q of SL) if(q.mode==="held"){q.mode="snap"; q.c=CFG.springC-CFG.wobbleExtra*0.5;}
+    const tip=[s.p[0]+s.pull[0],s.p[1]+s.pull[1],s.p[2]+s.pull[2]];
+    burst(toScreen(tip),Math.round(10+24*mag),0.6+0.6*mag); kick(0.8+2.2*mag); sfx("snap",Math.min(1,mag));
+    addHeat(0.8+0.7*Math.min(1,mag)); maybeLook(0.3,0.6,450);
+  }
+  lastInteract=performance.now(); reactToHeat(big);
+}
+stage.addEventListener("pointerup",release); stage.addEventListener("pointercancel",release);
+stage.addEventListener("pointerleave",()=>{S.idleX=S.idleY=0;release();});
+window.addEventListener("blur",release);
+stage.addEventListener("dblclick",()=>{S.yawT=S.pitchT=0;});
+
+// ---- Eyes: shared gaze, small inward bias, quick darts, blink, and a scripted glance ----
+const EY=D.eyes, IRK=D.irisScale;
+const G={nx:0,ny:0,cur:[0,0],from:[0,0],to:[0,0],t0:-1};
+let blink=0, blinkT=-1e4, nextBlink=performance.now()+2200;
+function triggerBlink(){blinkT=performance.now();}
+let pointerIn=false;
+let lastMove=null, pointerMoved=false, movedPx=0;   // pointerMoved: the visitor has actually moved the pointer since load
+window.addEventListener("pointermove",ev=>{
+  if(lastMove){ const dm=Math.hypot(ev.clientX-lastMove[0],ev.clientY-lastMove[1]); if(!pointerMoved){ movedPx+=Math.hypot(ev.movementX||0,ev.movementY||0); if(movedPx>12)pointerMoved=true; }   /* movementX/Y = real hand movement; ignores the page frame sliding under a still cursor */ moveAccum+=dm; if(moveAccum>40){ moveAccum=0; lastActivity=performance.now(); wakeUp(); } }
+  lastMove=[ev.clientX,ev.clientY];
+  pointerIn=true;const [nx,ny]=ndc(ev);G.nx=Math.max(-1.2,Math.min(1.2,nx));G.ny=Math.max(-1.2,Math.min(1.2,ny));
+  checkFar(ev);});
+document.addEventListener("pointerleave",()=>{pointerIn=false;});
+const GL={w:0,x:0,y:0};   // glance override: both eyes look at (x,y) with weight w
+// Eye contact: a quick dart to look straight at you ("are you really doing this?").
+// Rationed with a cooldown so it stays occasional; scripted moments can force it.
+const CONTACT={until:0,last:-1e9,w:0};
+function lookAtYou(dur,force){ const now=performance.now(); if(!force&&now-CONTACT.last<CFG.contactGap*1000)return;
+  CONTACT.until=Math.max(CONTACT.until,now+dur*1000); CONTACT.last=now; }
+const maybeLook=(p,dur,delay)=>{ if(Math.random()<p) setTimeout(()=>lookAtYou(dur),delay||0); };
+function gazeAngles(P){
+  const TG=applyInv(ROT,[P[0]-T[0],P[1]-T[1],P[2]-T[2]]);
+  const mx=(EY[0].c[0]+EY[1].c[0])/2,my=(EY[0].c[1]+EY[1].c[1])/2,mz=(EY[0].c[2]+EY[1].c[2])/2-0.03;
+  let d=[TG[0]-mx,TG[1]-my,TG[2]-mz];const L=Math.hypot(...d);d=d.map(v=>v/L);
+  return [Math.atan2(d[0],d[2])/0.55, Math.atan2(d[1],Math.hypot(d[0],d[2]))/0.45];
+}
+function gazeTarget(){
+  let [gx,gy]=gazeAngles([G.nx*1.5,G.ny*1.1+0.05,1.45]);
+  if(CONTACT.w>0.001){const c=gazeAngles([0,0.02,CFG.camZ]); gx+=(c[0]-gx)*CONTACT.w; gy+=(c[1]-gy)*CONTACT.w;}
+  gx+= (GL.x-gx)*GL.w; gy+=(GL.y-gy)*GL.w;
+  const m=Math.hypot(gx,gy); if(m>1){gx/=m;gy/=m;} return [gx,gy];
+}
+function updateEyes(now,dt){
+  const tgt=gazeTarget(), t=now/1000;
+  if(Math.hypot(tgt[0]-G.to[0],tgt[1]-G.to[1])>0.16){G.from=G.cur.slice();G.to=tgt;G.t0=t;}
+  else{G.to[0]+=(tgt[0]-G.to[0])*Math.min(1,dt*4);G.to[1]+=(tgt[1]-G.to[1])*Math.min(1,dt*4);}
+  const k=G.t0<0?1:Math.min(1,(t-G.t0)/0.07), e=easeOut(k);
+  G.cur=[G.from[0]+(G.to[0]-G.from[0])*e, G.from[1]+(G.to[1]-G.from[1])*e]; if(k>=1)G.from=G.cur.slice();
+  if(now>nextBlink){triggerBlink();nextBlink=now+2400+Math.random()*3200;}
+  const bt=(now-blinkT)/1000; blink=bt<0.07?bt/0.07:bt<0.10?1:bt<0.24?1-(bt-0.10)/0.14:0;
+  if(window.__blink!==undefined) blink=window.__blink;
+  blink=blink*blink*(3-2*blink);
+}
+function eyeOffset(i){
+  const e=EY[i], ir=e.b*IRK;
+  const GX=e.a-ir*0.75, GY=e.b-ir*0.55;
+  const inward=(e.c[0]<XM?1:-1)*0.06*GX;
+  const ex=WB.w*0.32*Math.cos(-WB.th*1.7), ey=WB.w*0.30*Math.sin(-WB.th*1.7);
+  return [(G.cur[0]+ex)*GX+inward, (G.cur[1]+ey)*GY];
+}
+
+// ---- Idle life: mouth breathing, a slow rock and bob, and two "scoot back" moves ----
+// Scoot 1 (when left alone): back, a sideways glance with one brow up, a small head tilt, then forward.
+// Scoot 2 (when the pointer wanders far from the head): back, back a little further, "wow", forward.
+// Keyframes: [time s, head z offset].
+const SCOOTS=[
+  {keys:[[0,0],[0.32,-0.18],[1.65,-0.18],[1.92,0.018],[2.12,0]], face:["skeptic",1.0,0.22],
+   glance:[[0.25,0,0],[0.45,-0.85,0.1],[0.95,-0.85,0.1],[1.10,0.6,0.05],[1.45,0.6,0.05],[1.65,0,0]], tilt:0.09},
+  {keys:[[0,0],[0.30,-0.14],[0.85,-0.14],[1.10,-0.30],[2.05,-0.30],[2.34,0.022],[2.55,0]], face:["wow",1.3,0.3], glance:null, tilt:-0.05}
+];
+let idleAnim=null, idleFor=0, nextIdle=4+Math.random()*2, idleCount=0, farArmed=true, farCool=0;
+function playScoot(i){ if(SP.on||active||INTRO.on||idleAnim)return; const a=SCOOTS[i%SCOOTS.length];
+  idleAnim={a,t:0,faced:false}; triggerBlink(); }
+function stopIdleAnim(){ idleAnim=null; GL.w=0; TILT.on=false; }
+function sampleKeys(k,t){
+  if(t<=k[0][0])return k[0][1];
+  for(let i=1;i<k.length;i++){ if(t<=k[i][0]){const u=(t-k[i-1][0])/(k[i][0]-k[i-1][0]); return k[i-1][1]+(k[i][1]-k[i-1][1])*easeInOut(u);} }
+  return k[k.length-1][1];
+}
+function checkFar(ev){
+  // pointer far from the head (as a share of the screen) triggers scoot 2, once per trip away
+  if(active||SP.on||INTRO.on||SLEEP.phase)return;
+  const c=toScreen([0,0,0]), r=canvas.getBoundingClientRect();
+  const d=Math.hypot(ev.clientX-r.left-c[0],ev.clientY-r.top-c[1])/Math.min(r.width,r.height);
+  if(d<CFG.farReset)farArmed=true;
+  if(farArmed&&d>CFG.farAway&&farCool<=0&&!idleAnim){farArmed=false; farCool=6; idleFor=0; playScoot(1);}
+}
+
+// ---- Sparkles (a 2D layer over the head) and screen shake ----
+const fx=document.getElementById("fx"), fxc=fx.getContext("2d");
+const REDUCED=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const PARTS=[], RINGS=[]; let shake=0;
+function toScreen(p){
+  const M=MODEL, x=p[0],y=p[1],z=p[2];
+  const vx=M[0]*x+M[4]*y+M[8]*z+M[12], vy=M[1]*x+M[5]*y+M[9]*z+M[13], vz=M[2]*x+M[6]*y+M[10]*z+M[14]-CFG.camZ;
+  const w=-vz; return [(lastProj[0]*vx/w*0.5+0.5)*fx.clientWidth, (0.5-lastProj[5]*vy/w*0.5)*fx.clientHeight];
+}
+// ---- Glove cursor (four pose images, see README) and the ghost demo tug ----
+// Desktop: the system cursor is hidden over the stage and the glove follows the pointer:
+// open over the background, ready (thumb and index apart) over its face, pinch while dragging,
+// a small squish on a tap. Each pose has its own fingertip point (hotspot, in 320-px image units); the
+// glove eases between them so swapping poses doesn't jump. Touch screens only see the ghost demo.
+const FINE=matchMedia("(hover:hover) and (pointer:fine)").matches;
+const HOT={open:[136,34],ready:[136,34],pinch:[72,163]};   // fingertip in each 320x319 image
+function gloveEl(id){ const el=document.getElementById(id), imgs={}; el.querySelectorAll("img").forEach(i=>imgs[i.dataset.p]=i);
+  return {el,imgs,pose:"",hot:[24,74],x:-999,y:-999}; }
+const GV=gloveEl("glove"), GH=gloveEl("ghost");
+function setPose(g,p){ if(g.pose===p)return; for(const k in g.imgs) g.imgs[k].classList.toggle("on",k===p); g.pose=p; }
+function gloveW(){ return Math.round(Math.max(104,Math.min(172,Math.min(innerWidth,innerHeight)*0.21))); }   // big enough to read as a hand, not a pointer
+function placeGlove(g,x,y,pose,dt,rot,sc){ setPose(g,pose); const h=HOT[pose], k=gloveW()/320, r=Math.min(1,dt*28);
+  g.hot[0]+=(h[0]-g.hot[0])*r; g.hot[1]+=(h[1]-g.hot[1])*r;
+  const ox=g.hot[0]*k, oy=g.hot[1]*k;
+  g.el.style.setProperty("--gw",gloveW()+"px"); g.el.style.transformOrigin=ox+"px "+oy+"px";
+  g.el.style.transform=`translate(${(x-ox).toFixed(1)}px,${(y-oy).toFixed(1)}px) rotate(${(rot||0).toFixed(2)}deg) scale(${(sc||1).toFixed(3)})`; }
+const GLOVE={x:0,y:0,seen:false,inStage:false,hover:false,lastRay:0,pokeUntil:0,flickUntil:0};
+if(FINE) stage.classList.add("gloved");
+window.addEventListener("pointermove",ev=>{ if(ev.pointerType!=="mouse"&&ev.pointerType!=="pen")return;
+  GLOVE.x=ev.clientX; GLOVE.y=ev.clientY; GLOVE.seen=true; GLOVE.inStage=(ev.target===canvas||ev.target===stage); });
+document.addEventListener("pointerleave",()=>{GLOVE.inStage=false;});
+window.addEventListener("blur",()=>{GLOVE.inStage=false;});
+
+// Ghost demo tug: if nobody has grabbed its face yet, a ghost glove floats in a couple of seconds after
+// the intro, pinches it cheek, pulls, lets go with a snap, and floats off. Once more ~8 s later if still nothing.
+const DEMO={on:false,t:0,count:0,at:Infinity,grabbed:false,slot:null,p:null,pull:[0.27,-0.11,0.08],from:[0,0]};
+function demoReady(){ return !active&&!S.rotating&&!SP.on&&!spinPending&&!INTRO.on&&!SLEEP.phase&&!DZS.on&&!danceLoop&&!idleAnim&&!TILT.on&&!NO.on&&!DIZ.on; }
+function startDemo(){
+  if(!DEMO.p){ DEMO.p=raycast([D.cheek[0],D.cheek[1],2],[0,0,-1]); if(!DEMO.p){DEMO.count=CFG.demoMax;return;} }
+  DEMO.on=true; DEMO.t=0; DEMO.count++; DEMO.released=false; DEMO.pinched=false;
+  DEMO.slot={p:DEMO.p.slice(),pull:[0,0,0],vel:[0,0,0],hold:[0,0,0],mode:"demo"}; SL.push(DEMO.slot); trimSlots();
+  const s0=toScreen(DEMO.p); DEMO.from=[s0[0]+gloveW()*1.4,s0[1]+gloveW()*1.1]; GH.hot=HOT.ready.slice();
+}
+function endDemo(){ if(!DEMO.on)return; DEMO.on=false; GH.el.classList.remove("show");
+  if(DEMO.slot&&DEMO.slot.mode==="demo"){DEMO.slot.mode="snap"; DEMO.slot.c=CFG.springC;} DEMO.slot=null;
+  DEMO.at=performance.now()+CFG.demoGap*1000; idleFor=0; }
+function updateDemo(now,dt){
+  if(!DEMO.on){ if(!DEMO.grabbed&&DEMO.count<CFG.demoMax&&now>DEMO.at&&demoReady()) startDemo(); if(!DEMO.on)return; }
+  DEMO.t+=dt; const t=DEMO.t, s=DEMO.slot;
+  if(!s||s.mode!=="demo"&&!DEMO.released){ endDemo(); return; }
+  const P=CFG.maxStretch, k=ss(0.85,1.75,t);   // pull from 0.85 s to 1.75 s
+  if(!DEMO.released) s.hold=DEMO.pull.map(v=>v*easeInOut(k));
+  if(t>0.85&&!DEMO.pinched){ DEMO.pinched=true; playFace("effort",0.8); }
+  if(t>1.75&&!DEMO.released){ DEMO.released=true; s.mode="snap"; s.c=CFG.springC-CFG.wobbleExtra*0.7;
+    const tip=toScreen([s.p[0]+s.pull[0],s.p[1]+s.pull[1],s.p[2]+s.pull[2]]); burst(tip,22,1.0); kick(1.6); sfx("snap",0.7);
+    setTimeout(()=>playFace("wow",0.5),120); }
+  // where the ghost's fingertips are: easing in to the cheek, riding the stretched skin, then drifting off
+  const tipNow=toScreen(DEMO.released?[s.p[0]+DEMO.pull[0],s.p[1]+DEMO.pull[1],s.p[2]+DEMO.pull[2]]:[s.p[0]+s.pull[0],s.p[1]+s.pull[1],s.p[2]+s.pull[2]]);
+  let x,y,pose,rot=0,sc=1;
+  if(t<0.7){ const u=easeOut(t/0.7); x=DEMO.from[0]+(tipNow[0]-DEMO.from[0])*u; y=DEMO.from[1]+(tipNow[1]-DEMO.from[1])*u; pose="ready"; rot=-6*(1-u); }
+  else if(t<1.75){ x=tipNow[0]; y=tipNow[1]; pose=t<0.85?"ready":"pinch"; sc=t<0.85?1:1-0.05*k; }
+  else { const u=easeOut(Math.min(1,(t-1.75)/0.65)); x=tipNow[0]+gloveW()*0.9*u; y=tipNow[1]+gloveW()*0.7*u; pose="open"; rot=8*u; }
+  placeGlove(GH,x,y,pose,dt,rot,sc);
+  GH.el.classList.toggle("show",t<2.1);
+  if(t>2.45) endDemo();
+}
+function updateGlove(now,dt){
+  updateDemo(now,dt);
+  const show=FINE&&GLOVE.seen&&GLOVE.inStage;
+  GV.el.classList.toggle("show",show); if(!show)return;
+  // hovering its face? (raycast, rationed)
+  if(!active&&!S.rotating&&now-GLOVE.lastRay>70){ GLOVE.lastRay=now; const r=ray({clientX:GLOVE.x,clientY:GLOVE.y}); GLOVE.hover=!!raycast(r.o,r.d); }
+  let pose="open", rot=0, sc=1;
+  if(active){ pose="pinch"; sc=1-0.06*Math.min(1,len3(active.pull)/CFG.maxStretch); rot=-3*Math.min(1,len3(active.pull)/CFG.maxStretch); }
+  else if(now<GLOVE.pokeUntil){ pose="ready"; const u=1-(GLOVE.pokeUntil-now)/260; sc=1-0.10*Math.sin(Math.PI*u); }
+  else if(now<GLOVE.flickUntil){ pose="open"; rot=7*(GLOVE.flickUntil-now)/220; }
+  else if(S.rotating) pose="open";
+  else if(GLOVE.hover){ pose="ready"; rot=2.2*Math.sin(now/1000*9); }   // a little "ready to pinch" twitch
+  placeGlove(GV,GLOVE.x,GLOVE.y,pose,dt,rot,sc);
+}
+const SPARK_COLS=["#fff6c9","#ffe066","#ffd23f","#ffffff","#bfe3ff"];
+function burst(at,n,power,noRing){
+  if(REDUCED)n=Math.ceil(n/3);
+  const sc=Math.min(fx.clientWidth,fx.clientHeight)/800;
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, sp=(160+Math.random()*420)*power*sc;
+    PARTS.push({x:at[0],y:at[1],vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-120*power*sc,life:0,max:0.55+Math.random()*0.5,
+      size:(7+Math.random()*12)*(0.7+power*0.5)*sc,rot:Math.random()*6.28,vr:(Math.random()-.5)*10,
+      col:SPARK_COLS[(Math.random()*SPARK_COLS.length)|0],tw:Math.random()*6.28});
+  }
+  if(!noRing)RINGS.push({x:at[0],y:at[1],life:0,max:0.32,r:(40+70*power)*sc});
+}
+function ringBurst(){
+  const c=toScreen([0,0.02,0]), R=Math.min(fx.clientWidth,fx.clientHeight)*0.30, n=REDUCED?8:26;
+  for(let i=0;i<n;i++){const a=i/n*Math.PI*2; burst([c[0]+Math.cos(a)*R,c[1]+Math.sin(a)*R*1.1],1,0.45,true);}
+  RINGS.push({x:c[0],y:c[1],life:0,max:0.45,r:R*1.3});
+}
+function kick(px){ if(!REDUCED) shake=Math.max(shake,px); }
+function star(ctx,r){
+  ctx.beginPath();
+  for(let i=0;i<4;i++){const a=i*Math.PI/2; ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);
+    ctx.quadraticCurveTo(Math.cos(a+Math.PI/4)*r*0.16,Math.sin(a+Math.PI/4)*r*0.16,Math.cos(a+Math.PI/2)*r,Math.sin(a+Math.PI/2)*r);}
+  ctx.closePath(); ctx.fill();
+}
+const ZS=[];
+function zzz(){ const sc=Math.min(fx.clientWidth,fx.clientHeight)/800;
+  [0,1,2].forEach(i=>setTimeout(()=>{ if(SLEEP.phase!=="asleep")return; const p=toScreen([0.22,0.30,0.12]);
+    ZS.push({x:p[0],y:p[1],vx:(26+i*6)*sc,vy:-(38+i*8)*sc,life:0,max:2.6,size:(26+i*13)*sc,ph:Math.random()*6.28,ch:i===2?"Z":"z"}); },i*420)); }
+const NOTES=[];
+function noteBurst(){
+  const side=Math.random()<0.5?-1:1, p=toScreen([side*0.42,0.15+Math.random()*0.2,0.05]);
+  const sc=Math.min(fx.clientWidth,fx.clientHeight)/800;
+  NOTES.push({x:p[0],y:p[1],vx:side*(30+Math.random()*40)*sc,vy:-(70+Math.random()*50)*sc,life:0,max:1.7,
+    size:(24+Math.random()*12)*sc,kind:Math.random()<0.5?1:2,col:pick(["#ffe066","#bfe3ff","#fff6c9","#ffb3c7"]),ph:Math.random()*6.28});
+}
+function drawNote(n,k){
+  const s=n.size; fxc.save(); fxc.translate(n.x+Math.sin(n.ph+n.life*5)*6*s/16,n.y); fxc.rotate(-0.2+0.15*Math.sin(n.ph+n.life*4));
+  fxc.globalAlpha=(k<0.15?k/0.15:1)*(1-ss(0.6,1,k)); fxc.fillStyle=n.col; fxc.strokeStyle=n.col; fxc.lineWidth=Math.max(1.5,s*0.14);
+  fxc.shadowColor=n.col; fxc.shadowBlur=8;
+  const head=(x,y)=>{fxc.beginPath(); fxc.ellipse(x,y,s*0.32,s*0.23,-0.4,0,Math.PI*2); fxc.fill();};
+  if(n.kind===1){ head(0,0); fxc.beginPath(); fxc.moveTo(s*0.28,-s*0.05); fxc.lineTo(s*0.28,-s*1.05);
+    fxc.quadraticCurveTo(s*0.75,-s*0.75,s*0.6,-s*0.35); fxc.stroke(); }
+  else { head(0,0); head(s*0.75,-s*0.15); fxc.beginPath(); fxc.moveTo(s*0.28,-s*0.05); fxc.lineTo(s*0.28,-s*1.0);
+    fxc.lineTo(s*1.03,-s*1.15); fxc.lineTo(s*1.03,-s*0.2); fxc.stroke(); fxc.lineWidth*=1.6; fxc.beginPath(); fxc.moveTo(s*0.28,-s*1.0); fxc.lineTo(s*1.03,-s*1.15); fxc.stroke(); }
+  fxc.restore();
+}
+function dizzyStars(){
+  // a ring of stars circling just above the cap; the far side is smaller and dimmer
+  const c=toScreen([0,0.60,0]), e=toScreen([0.34,0.60,0]), rx=Math.hypot(e[0]-c[0],e[1]-c[1]), ry=rx*0.28;
+  const tt=performance.now()/1000, n=5;
+  for(let i=0;i<n;i++){
+    const ph=-tt*3.2+i*Math.PI*2/n, depth=Math.sin(ph), x=c[0]+Math.cos(ph)*rx, y=c[1]+depth*ry;
+    const k=0.62+0.38*(depth*0.5+0.5), col=i%2?"#ffe066":"#fff6c9";
+    fxc.save(); fxc.translate(x,y); fxc.rotate(ph*0.7);
+    fxc.globalAlpha=WB.w*(0.55+0.45*k); fxc.fillStyle=col; fxc.shadowColor=col; fxc.shadowBlur=10;
+    star(fxc,rx*0.16*k); fxc.restore();
+  }
+}
+function drawFx(dt){
+  const dpr=Math.min(window.devicePixelRatio||1,2), w=Math.round(fx.clientWidth*dpr), h=Math.round(fx.clientHeight*dpr);
+  if(fx.width!==w||fx.height!==h){fx.width=w;fx.height=h;}
+  fxc.setTransform(dpr,0,0,dpr,0,0); fxc.clearRect(0,0,fx.clientWidth,fx.clientHeight);
+  fxc.globalCompositeOperation="lighter";
+  for(let i=RINGS.length-1;i>=0;i--){const g=RINGS[i]; g.life+=dt; const k=g.life/g.max; if(k>=1){RINGS.splice(i,1);continue;}
+    fxc.strokeStyle=`rgba(255,236,170,${0.55*(1-k)})`; fxc.lineWidth=3*(1-k)+0.5;
+    fxc.beginPath(); fxc.arc(g.x,g.y,g.r*easeOut(k),0,Math.PI*2); fxc.stroke();}
+  for(let i=PARTS.length-1;i>=0;i--){const p=PARTS[i]; p.life+=dt; const k=p.life/p.max; if(k>=1){PARTS.splice(i,1);continue;}
+    p.vx*=Math.pow(0.12,dt); p.vy=p.vy*Math.pow(0.12,dt)+520*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.rot+=p.vr*dt;
+    const pop=k<0.15?k/0.15:1, fade=1-ss(0.55,1,k), tw=0.75+0.25*Math.sin(p.tw+p.life*30);
+    fxc.save(); fxc.translate(p.x,p.y); fxc.rotate(p.rot*0.15);
+    fxc.globalAlpha=fade*tw; fxc.fillStyle=p.col; fxc.shadowColor=p.col; fxc.shadowBlur=10;
+    star(fxc,p.size*pop*(1-0.4*k)); fxc.restore();}
+  if(WB.w>0.02) dizzyStars();
+  for(let i=ZS.length-1;i>=0;i--){const z=ZS[i]; z.life+=dt; const k=z.life/z.max; if(k>=1){ZS.splice(i,1);continue;}
+    z.x+=z.vx*dt; z.y+=z.vy*dt;
+    fxc.save(); fxc.translate(z.x+Math.sin(z.ph+z.life*2.2)*8*z.size/30, z.y); fxc.rotate(-0.15+0.12*Math.sin(z.ph+z.life*1.7));
+    fxc.globalAlpha=(k<0.12?k/0.12:1)*(1-ss(0.55,1,k)); fxc.fillStyle="#d6e4ff"; fxc.shadowColor="#9db8ff"; fxc.shadowBlur=10;
+    fxc.font=`800 ${Math.round(z.size*(0.8+0.3*k))}px ui-rounded,"Arial Rounded MT Bold","Nunito",system-ui,sans-serif`;
+    fxc.textAlign="center"; fxc.textBaseline="middle"; fxc.fillText(z.ch,0,0); fxc.restore();}
+  for(let i=NOTES.length-1;i>=0;i--){const n=NOTES[i]; n.life+=dt; const k=n.life/n.max; if(k>=1){NOTES.splice(i,1);continue;}
+    n.x+=n.vx*dt; n.y+=n.vy*dt; n.vy*=Math.pow(0.6,dt); drawNote(n,k);}
+  fxc.globalCompositeOperation="source-over";
+  if(shake>0.05){const a=Math.random()*6.28; canvas.style.transform=`translate(${Math.cos(a)*shake}px,${Math.sin(a)*shake}px)`; shake*=Math.pow(0.00005,dt);}
+  else if(shake){shake=0; canvas.style.transform="";}
+}
+
+// ---- Sound: the approved design from the 2D prototype (v4) ----
+// Drag: a low triangle hum with vibrato through a lowpass, only audible while the pointer moves; it
+// rises and wobbles faster the tauter the pull. Snap: a decaying spring "sproing" (pitch swings around a
+// settling tone) with an octave-up shimmer and a short noise tick. Off until switched on.
+// Two switches: Sound (effects, on by default; the browser starts it on your first click) and Music (off by default).
+let AC=null, soundOn=true;
+const sbtn=document.getElementById("sound"), mbtn=document.getElementById("music");
+function ensureAudio(){ if(soundOn) audioCtx(); else if(AC&&AC.state==="suspended"&&musicOn) AC.resume(); }
+function setSound(v){soundOn=v; sbtn.setAttribute("aria-pressed",v?"true":"false"); sbtn.textContent=v?"Sound on":"Sound off"; ensureAudio(); if(!v)sfxDragStop();}
+sbtn.addEventListener("click",e=>{e.stopPropagation(); setSound(!soundOn);});
+sbtn.addEventListener("pointerdown",e=>e.stopPropagation());
+function musicLabel(t){ mbtn.textContent=t||(musicOn?"Music on":"Music off"); mbtn.setAttribute("aria-pressed",musicOn?"true":"false"); }
+mbtn.addEventListener("click",e=>{e.stopPropagation(); setMusic(!musicOn);});
+if(!CFG.musicFile) mbtn.hidden=true;
+mbtn.addEventListener("pointerdown",e=>e.stopPropagation());
+// ---- Music: the electro-swing loop, its own button; loads only when first turned on ----
+let musicOn=false, MUS=null;
+let musicMul=1;
+function audioCtx(){ if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}} if(AC&&AC.state==="suspended")AC.resume(); return AC; }
+async function setMusic(v){
+  musicOn=v;
+  const ac=audioCtx(); if(!ac){ musicOn=false; musicLabel("Music unavailable"); return; }
+  if(v&&!MUS){
+    musicLabel("Loading music…");
+    try{ const r=await fetch(CFG.musicFile); const buf=await ac.decodeAudioData(await r.arrayBuffer());
+      // The track is exactly 148 beats long and loops seamlessly. Decoders may add a few ms of padding at the
+      // start, so find where the music actually begins and loop exactly one track-length from there.
+      const ch=buf.getChannelData(0); let j=0; while(j<ch.length&&Math.abs(ch[j])<=0.05) j++;
+      const ls=Math.max(0,(j-CFG.musicFirst)/buf.sampleRate), le=CFG.musicLen>0?Math.min(buf.duration,ls+CFG.musicLen):buf.duration;
+      SFX(); const g=ac.createGain(); g.gain.value=0; g.connect(BUS.c);
+      const src=ac.createBufferSource(); src.buffer=buf; src.loop=true; src.loopStart=ls; src.loopEnd=le; src.connect(g);
+      const t0=ac.currentTime+0.05; src.start(t0,ls);
+      MUS={g,src,t0,len:le-ls}; }
+    catch(e){ musicOn=false; musicLabel("Music didn't load"); return; }
+  }
+  if(MUS){ const t=ac.currentTime; MUS.g.gain.cancelScheduledValues(t); MUS.g.gain.setValueAtTime(MUS.g.gain.value,t);
+    MUS.g.gain.linearRampToValueAtTime(musicOn?CFG.musicVol*musicMul:0,t+0.6); }
+  musicLabel();
+}
+function duckMusic(amt,dur){ if(!MUS||!musicOn)return; const t=AC.currentTime, g=MUS.g.gain;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value,t); g.linearRampToValueAtTime(CFG.musicVol*musicMul*amt,t+0.15); g.linearRampToValueAtTime(CFG.musicVol*musicMul,t+dur); }
+// music level while asleep etc. (1 = normal)
+// position in beats of the music, or null if it isn't playing
+function musicBeats(){ if(!MUS||!musicOn||!AC)return null; const p=((AC.currentTime-MUS.t0)%MUS.len+MUS.len)%MUS.len; return p/BEAT; }
+function musicLevel(m,dur){ musicMul=m; if(!MUS||!musicOn)return; const t=AC.currentTime, g=MUS.g.gain;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value,t); g.linearRampToValueAtTime(CFG.musicVol*m,t+dur); }
+document.addEventListener("visibilitychange",()=>{ if(!AC)return; if(document.hidden)AC.suspend(); else if(musicOn||soundOn)AC.resume(); });
+// Mix: effects and music share a gentle compressor so they sit together; the music is set well under the effects.
+let BUS=null;
+function SFX(){ if(!BUS){ const c=AC.createDynamicsCompressor(); c.threshold.value=-16; c.knee.value=12; c.ratio.value=3; c.attack.value=0.004; c.release.value=0.25;
+  c.connect(AC.destination); const fx=AC.createGain(); fx.gain.value=CFG.sfxVol; fx.connect(c); BUS={c,fx}; } return BUS.fx; }
+let HUM=null;
+function sfxDragStart(){
+  if(!soundOn||!AC)return; sfxDragStop();
+  const o=AC.createOscillator(), g=AC.createGain(), f=AC.createBiquadFilter(), l=AC.createOscillator(), lg=AC.createGain();
+  // a rubbery stretch: pitch in the range small speakers actually play, rising with the stretch, with a wobble
+  f.type="lowpass"; f.frequency.value=2200; o.type="triangle"; o.frequency.value=170; g.gain.value=0;
+  l.type="sine"; l.frequency.value=6; lg.gain.value=5; l.connect(lg).connect(o.frequency);
+  o.connect(f).connect(g).connect(SFX()); o.start(); l.start(); HUM={o,g,l,lg};
+  musicLevel(CFG.dragDuck,0.12);
+}
+function sfxDragUpdate(s,speed){
+  if(!HUM)return; const t=AC.currentTime; s=Math.min(1,s);
+  const gate=speed>0?0.45+0.55*speed:0;   // any movement is audible; holding still goes quiet
+  HUM.o.frequency.linearRampToValueAtTime(170+s*380,t+0.03);
+  HUM.g.gain.linearRampToValueAtTime((0.07+0.09*s)*gate,t+0.05);
+  HUM.l.frequency.linearRampToValueAtTime(5+s*9,t+0.05); HUM.lg.gain.linearRampToValueAtTime(5+s*20,t+0.05);
+}
+setInterval(()=>{ if(HUM&&active&&performance.now()-(active.lastMove||0)>90) sfxDragUpdate(len3(active.pull)/CFG.maxStretch,0); },60);
+function sfxDragStop(){
+  if(!HUM||!AC)return; const t=AC.currentTime, h=HUM; HUM=null;
+  h.g.gain.cancelScheduledValues(t); h.g.gain.setValueAtTime(h.g.gain.value,t); h.g.gain.linearRampToValueAtTime(0,t+0.08);
+  h.o.stop(t+0.1); h.l.stop(t+0.1); if(!SLEEP.phase) musicLevel(1,0.6);
+}
+function boingCurve(n,dur,f0,fr,depth,rate,decay){
+  const a=new Float32Array(n);
+  for(let i=0;i<n;i++){const t=i/n*dur, d=Math.exp(-decay*t); a[i]=Math.max(45, fr+(f0-fr)*d + depth*d*Math.sin(2*Math.PI*rate*t));}
+  return a;
+}
+function sproing(s,vol){
+  const t=AC.currentTime, dur=0.38+s*0.42, f0=185+s*165, fr=80, depth=65+s*105, rate=15-s*3, decay=4.5/dur, n=Math.round(dur*300);
+  const o=AC.createOscillator(), g=AC.createGain(); o.type="triangle";
+  o.frequency.setValueCurveAtTime(boingCurve(n,dur,f0,fr,depth,rate,decay),t,dur);
+  g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime((0.2+s*0.12)*vol,t+0.012); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g).connect(SFX()); o.start(t); o.stop(t+dur+0.02);
+  const o2=AC.createOscillator(), g2=AC.createGain(); o2.type="sine";
+  o2.frequency.setValueCurveAtTime(boingCurve(n,dur,f0*2,fr*2,depth*1.4,rate,decay),t,dur);
+  g2.gain.setValueAtTime(0.0001,t); g2.gain.linearRampToValueAtTime((0.06+s*0.04)*vol,t+0.012); g2.gain.exponentialRampToValueAtTime(0.0001,t+dur*0.8);
+  o2.connect(g2).connect(SFX()); o2.start(t); o2.stop(t+dur+0.02);
+}
+function noiseTick(vol){
+  const t=AC.currentTime, n=Math.round(AC.sampleRate*0.025), b=AC.createBuffer(1,n,AC.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2);
+  const src=AC.createBufferSource(), hp=AC.createBiquadFilter(), g=AC.createGain();
+  src.buffer=b; hp.type="highpass"; hp.frequency.value=1200; g.gain.value=vol;
+  src.connect(hp).connect(g).connect(SFX()); src.start(t);
+}
+// Small helpers for the reaction sounds. They stay in the same toy-like register as the sproing.
+function tone(type,f0,f1,t0,dur,vol,vib){
+  const o=AC.createOscillator(), g=AC.createGain(); o.type=type;
+  o.frequency.setValueAtTime(f0,t0); o.frequency.exponentialRampToValueAtTime(Math.max(30,f1),t0+dur);
+  if(vib){const l=AC.createOscillator(), lg=AC.createGain(); l.frequency.value=vib[0]; lg.gain.value=vib[1]; l.connect(lg).connect(o.frequency); l.start(t0); l.stop(t0+dur+0.05);}
+  g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(vol,t0+0.012); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  o.connect(g).connect(SFX()); o.start(t0); o.stop(t0+dur+0.05);
+}
+function whoosh(t0,dur,f0,f1,vol){
+  const n=Math.round(AC.sampleRate*dur), b=AC.createBuffer(1,n,AC.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<n;i++)d[i]=Math.random()*2-1;
+  const src=AC.createBufferSource(), bp=AC.createBiquadFilter(), g=AC.createGain();
+  src.buffer=b; bp.type="bandpass"; bp.Q.value=1.4; bp.frequency.setValueAtTime(f0,t0); bp.frequency.exponentialRampToValueAtTime(f1,t0+dur);
+  g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(vol,t0+dur*0.5); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  src.connect(bp).connect(g).connect(SFX()); src.start(t0);
+}
+// a soft rattling snore: low noise, amplitude-modulated so it buzzes, swelling in and out
+function snore(t0,dur,vol){ dur=dur||1.1; vol=vol||0.07;
+  const n=Math.round(AC.sampleRate*dur), b=AC.createBuffer(1,n,AC.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<n;i++)d[i]=Math.random()*2-1;
+  const src=AC.createBufferSource(), lp=AC.createBiquadFilter(), am=AC.createGain(), env=AC.createGain(), lfo=AC.createOscillator(), lg=AC.createGain();
+  src.buffer=b; lp.type="lowpass"; lp.frequency.value=420; am.gain.value=0.55; lfo.frequency.value=27; lg.gain.value=0.45;
+  lfo.connect(lg).connect(am.gain);
+  env.gain.setValueAtTime(0.0001,t0); env.gain.exponentialRampToValueAtTime(vol,t0+dur*0.55); env.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  src.connect(lp).connect(am).connect(env).connect(SFX()); src.start(t0); lfo.start(t0); lfo.stop(t0+dur+0.05);
+}
+function sfx(kind,mag){
+  if(!soundOn||!AC)return; const t=AC.currentTime;
+  if(kind==="snap"){ sproing(mag||0.5,1); noiseTick(0.12+(mag||0.5)*0.08); }
+  else if(kind==="boop"){ sproing(0.05,0.7); }
+  else if(kind==="tick"){ tone("sine",720,430,t,0.09,0.16); noiseTick(0.07); }   // small pull sets: a soft "plip"
+  else if(kind==="intro"){ sproing(0.6,0.7); }
+  else if(kind==="spin"){ whoosh(t,0.62,400,1500,0.10); whoosh(t+0.5,0.66,500,2000,0.16); whoosh(t+1.05,0.7,450,1400,0.11); }   // three airy swells, no notes
+  else if(kind==="land"){ sproing(0.12,0.55); }
+  else if(kind==="yawn"){ tone("sine",360,240,t+0.1,1.0,0.05,[5,9]); whoosh(t,1.0,700,350,0.04); }
+  else if(kind==="catch"){ tone("sine",480,620,t,0.09,0.05); }
+  else if(kind==="snore"){ snore(t); }
+  else if(kind==="exhale"){ tone("sine",1150,820,t+0.05,0.75,0.018,[6,14]); }
+  else if(kind==="snort"){ snore(t,0.22,0.16); sproing(0.1,0.6); }
+  else if(kind==="dizzy"){ for(let i=0;i<3;i++) tone("sine",1400,1000,t+i*0.42,0.32,0.035,[11,90]); }
+  else if(kind==="no"){ for(let i=0;i<6;i++) tone("triangle",i%2?300:340,i%2?280:320,t+i*0.125,0.1,0.07*(1-i*0.12)); }
+  else if(kind==="look"){ tone("sine",420,400,t,0.09,0.06); tone("sine",470,640,t+0.12,0.14,0.06); }
+  else if(kind==="tilt"){ tone("sine",520,880,t,0.16,0.05); }
+}
+
+function resize(){const dpr=Math.min(window.devicePixelRatio||1,2),w=Math.round(canvas.clientWidth*dpr),h=Math.round(canvas.clientHeight*dpr);
+  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}return canvas.clientWidth/Math.max(canvas.clientHeight,1);}
+function bind(p){
+  gl.bindBuffer(gl.ARRAY_BUFFER,p.pos);gl.enableVertexAttribArray(A.pos);gl.vertexAttribPointer(A.pos,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,p.nrm);gl.enableVertexAttribArray(A.normal);gl.vertexAttribPointer(A.normal,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,p.uv);gl.enableVertexAttribArray(A.uv);gl.vertexAttribPointer(A.uv,2,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,p.jaw);gl.enableVertexAttribArray(A.jaw);gl.vertexAttribPointer(A.jaw,1,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,p.kind);gl.enableVertexAttribArray(A.kind);gl.vertexAttribPointer(A.kind,1,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,p.expr);gl.enableVertexAttribArray(A.expr);gl.vertexAttribPointer(A.expr,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,p.hair);gl.enableVertexAttribArray(A.hair);gl.vertexAttribPointer(A.hair,1,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,p.idx);
+}
+const H={o:[0,0,0],v:[0,0,0],py:0,pp:0,pr:0,pj:0}; window.__H=H;
+const GP=new Float32Array(24), PL=new Float32Array(24);
+const IDLE={w:1,z:0,pz:0,px:0,py:0};
+let prev=performance.now(), mouthDrive=0;
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min((now-prev)/1000,0.25)*(window.__speed||1); prev=now; const t=now/1000;   // __speed: test hook only
+  farCool=Math.max(0,farCool-dt);
+  // springs: snapping slots go home (their damping set at release); held slots settle onto their pose.
+  // Integrated in fixed sub-steps so a slow frame (old phone, screen recorder) moves the same distance as a fast one.
+  { const H=1/120, n=Math.max(1,Math.min(30,Math.ceil(dt/H))), h=dt/n;
+    for(let k=0;k<n;k++) for(let j=SL.length-1;j>=0;j--){const s=SL[j];
+      if(s.mode==="snap"){
+        for(let i=0;i<3;i++){const a=-CFG.springK*s.pull[i]-(s.c||CFG.springC)*s.vel[i]; s.vel[i]+=a*h; s.pull[i]+=s.vel[i]*h;}
+        if(len3(s.pull)<1e-4&&len3(s.vel)<1e-3)SL.splice(j,1);
+      } else if(s.mode==="held"||s.mode==="demo"){
+        for(let i=0;i<3;i++){const a=-CFG.springK*(s.pull[i]-s.hold[i])-16*s.vel[i]; s.vel[i]+=a*h; s.pull[i]+=s.vel[i]*h;}
+      }} }
+  // the spin reset
+  let spinYaw=0, spinJaw=0, dizzyLid=0; DZ.w=0; WB.w=0;
+  if(SP.on){
+    const et=(now-SP.t0)/1000, k=Math.min(1,et/SP.dur), e=easeInOut(k);
+    spinYaw=e*SP.turns*Math.PI*2; spinJaw=0.55*Math.sin(Math.PI*k);
+    for(const s of SL){ if(s.mode!=="spin")continue; s.pull=s.p0.slice(); s.vel=[0,0,0]; }   // your own distortion rides through the spin
+    if(k>=1&&!SP.landed){SP.landed=true;
+      for(const s of SL){ s.mode="snap"; s.c=CFG.springC-CFG.wobbleExtra*0.9; s.vel=[0,0,0]; }   // everything snaps back as the stars pop
+      ringBurst(); kick(0.8); sfx("land"); lookAtYou(SP.settle+0.1,true); setTimeout(triggerBlink,320);}
+    // after landing: a beat of stillness looking at you, then a short recovery shake (lids heavy), then a grin
+    const d0=SP.dur, d1=d0+SP.settle, d2=d1+SP.shake, d3=d2+SP.after;
+    if(et<=d0) dizzyLid=0.35*ss(d0-0.3,d0,et);
+    else if(et<=d1) dizzyLid=0.35*(1-ss(d0+0.15,d0+0.45,et));
+    else if(et<=d2){ if(!SP.shook){SP.shook=true; sfx("no");}
+      const u=Math.min(1,(et-d1)/SP.shake); spinYaw+=0.13*Math.sin(Math.PI*2*3*u)*Math.pow(1-u,0.7); dizzyLid=0.45; }
+    else if(!SP.grinned){ SP.grinned=true; triggerBlink(); playFace("grin",0.8); lookAtYou(0.9,true); }
+    if(et>=d3){SP.on=false; SP.landed=false; SP.shook=false; SP.grinned=false;
+      idleFor=0; lastInteract=performance.now(); nextIdle=CFG.idleAfterSpin+Math.random()*2;}
+  } else if(heat(now)<1.2) heatLevel=0;
+  // standalone dizzy (D)
+  DZ.bob=0;
+  if(DZS.on){ DZS.t+=dt; const u=DZS.t; DZ.w=ss(0,BEAT,u)*(1-ss(DZS.dur-BEAT,DZS.dur,u)); DZ.th=u*Math.PI/BEAT;
+    DZ.bob=Math.abs(Math.sin(Math.PI*u/BEAT)); CONTACT.until=Math.max(CONTACT.until,now+150);
+    if(Math.floor(u/BEAT)!==DZS.lastBeat){ DZS.lastBeat=Math.floor(u/BEAT); if(DZ.w>0.3){ noteBurst(); if(Math.random()<0.5) setTimeout(noteBurst,BEAT*500); } }
+    if(u>=DZS.dur){ DZS.on=false; if(danceLoop){ danceLeft--; if(danceLeft>0) DZS.restart=now+BEAT*2000; else { danceLoop=false; danceDoneFor=lastInteract; lookAtYou(0.8); } } } }
+  else if(danceLoop&&DZS.restart&&now>DZS.restart&&quietNow()){ DZS.restart=0; playDance(false); }
+  let dzYaw=0, dzRoll=0, dzPitch=0; WB.shake=0;
+  if(DIZ.on){ DIZ.t+=dt; const u=DIZ.t, W=DIZ.wob;
+    WB.w=ss(0,0.5,u)*(1-ss(W-0.7,W,u));
+    WB.th=Math.PI*2*(CFG.wobRate*u-0.055*u*u)+0.12*Math.sin(3.3*u);   // slows down, slightly uneven
+    const A=CFG.wobA*WB.w, c=Math.cos(WB.th), sn=Math.sin(WB.th);
+    dzRoll=-A*c; dzPitch=-0.55*A*sn; dzYaw=0.10*WB.w*Math.cos(WB.th-0.6);
+    dizzyLid=Math.max(dizzyLid,0.55*ss(0,0.4,u)*(1-ss(W-0.3,W,u)));
+    if(u>W){ const v=Math.min(1,(u-W)/0.55); WB.shake=0.12*Math.sin(Math.PI*2*4*v)*(1-v);
+      if(!DIZ.shook){DIZ.shook=true; sfx("no"); triggerBlink();} }
+    if(u>=DIZ.dur){DIZ.on=false; lookAtYou(1.0,true); playFace("grin",0.6);} }
+  // intro: scale up from a point with an elastic overshoot, big decaying rock + tilt
+  let introYaw=dzYaw+WB.shake, introRoll=dzRoll, introPitch=dzPitch;
+  if(!pointerMoved) CONTACT.until=Math.max(CONTACT.until,now+150);   // pointer tracking only starts once the visitor moves the pointer; until then it keeps looking at you
+  if(INTRO.on){
+    INTRO.t+=dt; const it=INTRO.t;
+    SCALE=Math.max(0.001, 1-Math.exp(-5.5*it)*Math.cos(8.5*it));
+    const env=Math.exp(-0.75*it)*ss(0,0.25,it);
+    introYaw=0.62*env*Math.sin(2*Math.PI*0.72*it);
+    introRoll=0.30*env*Math.sin(2*Math.PI*0.72*it+0.9);
+    introPitch=0.10*env*Math.sin(2*Math.PI*1.44*it);
+    if(!INTRO.popped&&it>0.12){INTRO.popped=true; burst(toScreen([0,0,0.3]),8,0.5); sfx("intro"); triggerBlink();}
+    if(it>1.4&&!INTRO.faced){INTRO.faced=true; playFace("grin",0.9);}
+    if(it<CFG.introLook) CONTACT.until=Math.max(CONTACT.until,now+150);   // it looks at you for the first 1.5 s
+    if(it>=INTRO.dur){INTRO.on=false; INTRO.faced=false; SCALE=1; if(!DEMO.grabbed&&DEMO.count<CFG.demoMax) DEMO.at=now+CFG.demoAfter*1000;}
+  }
+  if(TILT.on){
+    TILT.t+=dt; const k=TILT.t, env=Math.exp(-1.1*k)*ss(0,0.2,k);
+    introRoll+=0.24*env*Math.sin(2*Math.PI*0.8*k+0.9); introYaw+=0.30*env*Math.sin(2*Math.PI*0.8*k);
+    if(!TILT.faced&&k>0.25){TILT.faced=true; playFace("grin",0.9);}
+    if(k>3.2){TILT.on=false; lookAtYou(0.8);}
+  }
+  if(NO.on){
+    NO.t+=dt; const u=Math.min(1,NO.t/0.75);
+    introYaw+=0.16*Math.sin(Math.PI*2*3*u)*Math.pow(1-u,0.7);
+    if(NO.kind==="shakeoff"&&!NO.released&&NO.t>0.12){ NO.released=true;
+      for(const q of SL) if(q.mode==="held"){ q.mode="snap"; q.c=CFG.springC-CFG.wobbleExtra*0.6; q.vel=q.vel.map((v,i)=>v+(i===0?(Math.random()-.5)*1.2:0)); } }
+    if(NO.t>0.9){ NO.on=false; if(NO.kind==="shakeoff")playFace("grin",0.6); lookAtYou(0.8,true); }
+  }
+  // sleep
+  SLEEP.jaw=0; SLEEP.ty=0;
+  if(SLEEP.phase){ SLEEP.t+=dt; const u=SLEEP.t; let p=0,r=0,lid=0;
+    if(SLEEP.phase==="drowsy"){
+      const yawnBack=-0.07*ss(0,0.4,u)*(1-ss(0.8,1.2,u));     // head tips back with the yawn
+      const settle=ss(1.05,2.7,u);                               // lids close, head sinks down and to one side
+      p=yawnBack+0.17*settle; r=0.17*settle;
+      lid=u<1.0?0:ss(1.05,2.5,u);
+      SLEEP.jaw=0.10*settle; SLEEP.w=ss(0.9,2.4,u);
+      if(u>2.7){SLEEP.phase="asleep"; SLEEP.t=CFG.breath*0.5; SLEEP.cycle=0; SLEEP.zFor=-1;}   // start on an exhale: first Z now
+    } else if(SLEEP.phase==="asleep"){
+      const B=CFG.breath, ph=(u%B)/B, br=Math.sin(Math.PI*2*ph);   // ph 0-0.5 inhale (head rises), 0.5-1 exhale
+      p=0.17-0.025*br; r=0.17+0.012*br; lid=1; SLEEP.w=1;
+      SLEEP.jaw=0.10+0.06*ss(0.45,0.7,ph)*(1-ss(0.85,1,ph)); SLEEP.ty=0.006*br;
+      const k=Math.floor(u/B); if(k!==SLEEP.cycle){ SLEEP.cycle=k; sfx("snore"); }
+      if(ph>0.5&&SLEEP.zFor!==k){ SLEEP.zFor=k; zzz(); sfx("exhale"); }
+    } else if(SLEEP.phase==="wake"){
+      const f=SLEEP.from||{p:0,r:0}, k=easeOut(Math.min(1,u/0.22));
+      p=f.p*(1-k)-0.07*k*(1-ss(0.25,0.75,u)); r=f.r*(1-k); lid=0; SLEEP.w=1-ss(0,0.45,u);
+      if(u>1.5){ SLEEP.phase=""; SLEEP.w=0; idleFor=0; nextIdle=CFG.idleFirst[0]+2; }
+    }
+    SLEEP.p=p; SLEEP.r=r; introPitch+=p; introRoll+=r; dizzyLid=Math.max(dizzyLid,lid);
+  } else SLEEP.w=0;
+  // idle life
+  const quiet=!(active||SP.on||S.rotating||INTRO.on);
+  IDLE.w+=((quiet||INTRO.on?1:0)*(1-SLEEP.w)-IDLE.w)*Math.min(1,dt*2.5);
+  const idleJaw=CFG.idleJaw*(1+0.4*Math.sin(t*2*Math.PI/2.6))*IDLE.w;
+  const rockYaw=CFG.rockYaw*Math.sin(t*1.1)*IDLE.w;
+  let headZ=0, scootRoll=0; GL.w=0;
+  if(idleAnim){
+    const a=idleAnim.a, end=a.keys[a.keys.length-1][0]; idleAnim.t+=dt; const it=idleAnim.t;
+    headZ=sampleKeys(a.keys,it);
+    const back=ss(0,0.35,it)*(1-ss(end-0.45,end-0.1,it));
+    scootRoll=a.tilt*back;
+    if(!idleAnim.faced&&it>a.face[2]){idleAnim.faced=true; playFace(a.face[0],a.face[1]);}
+    if(a.glance){const g=a.glance; let x=0,y=0,w=0;
+      for(let i=1;i<g.length;i++){ if(it<=g[i][0]&&it>=g[i-1][0]){const u=easeInOut((it-g[i-1][0])/(g[i][0]-g[i-1][0]));
+        x=g[i-1][1]+(g[i][1]-g[i-1][1])*u; y=g[i-1][2]+(g[i][2]-g[i-1][2])*u; w=1;} }
+      GL.w=w*back; GL.x=x; GL.y=y;}
+    if(it>=end){idleAnim=null; lookAtYou(0.6);}
+  }
+  // left alone for a while: it starts dancing, on a loop, until you interact
+  if(!danceLoop&&!SLEEP.phase&&danceDoneFor!==lastInteract&&quiet&&!idleAnim&&!TILT.on&&!NO.on&&!DIZ.on&&!DZS.on&&!DEMO.on&&now-lastInteract>CFG.danceAfter*1000&&!SL.some(s=>s.mode!=="held")) playDance(true);
+  if(!SEEN.dance&&!SLEEP.phase&&quiet&&!idleAnim&&!TILT.on&&!NO.on&&!DIZ.on&&!DZS.on&&!spinPending&&!DEMO.on&&now-T_LOAD>CFG.showcaseAt*1000&&!SL.some(s=>s.mode==="snap")) playDance(false);
+  // left alone longer (no clicks or drags for 18 s, pointer still for the last 5 s): it dozes off
+  if(!SLEEP.phase&&quiet&&!danceLoop&&!idleAnim&&!TILT.on&&!NO.on&&!DIZ.on&&!DZS.on&&!spinPending&&!DEMO.on&&!SL.some(s=>s.mode!=="held")&&now-lastActivity>CFG.sleepStill*1000&&now-lastInteract>CFG.sleepAfter*1000) fallAsleep();
+  // held poses stay until a bigger reset (a big pull, the spin landing, or waking up); no timer
+  if(quiet&&!DEMO.on&&!SLEEP.phase&&!danceLoop&&!idleAnim&&!TILT.on&&!NO.on&&!DZS.on&&!DIZ.on&&!SL.some(s=>s.mode==="snap")){idleFor+=dt;
+    if(idleFor>nextIdle){idleFor=0; nextIdle=CFG.idleNext[0]+Math.random()*(CFG.idleNext[1]-CFG.idleNext[0]); idleCount++;
+      // alternate: scoot with a glance, or just a quick face
+      const n=idleCount%3; if(n===1)playScoot(0); else if(n===2)playFace(pick(["wow","grin","skeptic"]),0.9); else playTilt();}}
+  else idleFor=0;
+  IDLE.z+=(headZ-IDLE.z)*Math.min(1,dt*18);
+  const zV=(IDLE.z-IDLE.pz)/Math.max(dt,1e-3); IDLE.pz=IDLE.z;
+  if(NO.on){ const u=Math.min(1,NO.t/0.75); GL.w=0.9*(1-ss(0.8,1,u)); GL.x=-0.7*Math.sin(Math.PI*2*3*u-0.6); GL.y=-0.25; }
+  T[0]=0; T[1]=CFG.bob*Math.sin(t*2.2)*IDLE.w; T[2]=IDLE.z;
+  if(DZ.w>0){ T[0]+=CFG.dizzyR*DZ.w*Math.cos(DZ.th); T[1]+=CFG.dizzyR*0.85*DZ.w*Math.sin(DZ.th)+0.014*DZ.w*DZ.bob; }
+  T[1]+=SLEEP.ty; if(SLEEP.w>0){ GL.w=Math.max(GL.w,SLEEP.w); GL.x=0; GL.y=-0.35; }
+  if(WB.w>0){ T[0]+=CFG.wobDrift*WB.w*Math.cos(WB.th); T[1]+=0.6*CFG.wobDrift*WB.w*Math.sin(WB.th); GL.w=Math.max(GL.w,WB.w); GL.x=0; GL.y=0; }
+  const TxV=(T[0]-IDLE.px)/Math.max(dt,1e-3), TyV=(T[1]-IDLE.py)/Math.max(dt,1e-3); IDLE.px=T[0]; IDLE.py=T[1];
+  // mouth from pulls: the active pull and anything still snapping, scaled by this grab's reaction, with a lag
+  let mag=0, vsum=[0,0,0], react=1, effort=0;
+  for(const s of SL){ if(s.mode==="active"||s.mode==="snap"){const m=len3(s.pull); if(m>mag){mag=m; react=s.react?s.react.mouth:1;}
+    for(let i=0;i<3;i++)vsum[i]+=s.vel[i];}
+    if(s.mode==="active"&&s.react&&s.react.face==="effort") effort=Math.max(effort,ss(0.05,0.6,len3(s.pull)/CFG.maxStretch));}
+  mag/=CFG.maxStretch;
+  const lagged=active&&(now-active.t0)/1000<active.lag ? 0 : 1;
+  mouthDrive+=((ss(0.08,0.85,mag)*react*lagged)-mouthDrive)*Math.min(1,dt*(active?9:7));
+  const target=holdOpen?1:Math.max(mouthDrive,spinJaw);
+  S.jaw+=(target-S.jaw)*Math.min(1,dt*(active?12:9));
+  // faces
+  const stretching=ss(0.05,0.4,mag);
+  const FT={teeth:0,mouth:0,center:0,browL:0,browR:0,jaw:0,wide:0,lid:0};
+  for(let i=FACES.length-1;i>=0;i--){const f=FACES[i]; f.t+=dt;
+    const w=ss(0,f.up,f.t)*(1-ss(f.up+f.hold,f.up+f.hold+f.down,f.t)); if(f.t>f.up+f.hold+f.down){FACES.splice(i,1);continue;}
+    for(const k in FT) FT[k]+=f.p[k]*w;}
+  for(const k in FT) FT[k]+=POSES.effort[k]*effort;
+  const sleepFace=SLEEP.phase==="wake"?0:SLEEP.w; for(const k in FT) FT[k]+=POSES.sleepy[k]*sleepFace;
+  // the little "O" never fights a stretch
+  const oSup=1-stretching; if(FT.mouth>0){FT.mouth*=oSup; FT.center*=oSup;} FT.teeth*=oSup; FT.jaw*=oSup;
+  for(const k in FACE) FACE[k]+=(FT[k]-FACE[k])*Math.min(1,dt*10);
+  // Hair flop: a loose, under-damped spring that lags behind head turns, tilts, the grab, and the jaw.
+  const roll=introRoll+scootRoll+0.07*DZ.w*Math.sin(Math.PI*DZS.t/BEAT);
+  {
+    const yawNow=S.yaw+spinYaw+rockYaw+introYaw;
+    let dY=yawNow-H.py; dY-=Math.PI*2*Math.round(dY/(Math.PI*2));
+    const yawV=dY/Math.max(dt,1e-3), pitV=(S.pitch+introPitch-H.pp)/Math.max(dt,1e-3), rolV=(roll-H.pr)/Math.max(dt,1e-3), jawV=(S.jaw-H.pj)/Math.max(dt,1e-3);
+    H.py=yawNow; H.pp=S.pitch+introPitch; H.pr=roll; H.pj=S.jaw;
+    const fl=CFG.hairFlop*IDLE.w*(INTRO.on?0.4:1);
+    const f=[-yawV*0.030 - rolV*0.02 - vsum[0]*0.05 - fl*Math.cos(t*1.1) - TxV*0.35 - 0.35*WB.w*Math.cos(WB.th+0.8),
+             pitV*0.012 - vsum[1]*0.05 - Math.max(0,jawV)*0.03 + fl*0.9*Math.cos(t*2.2) - TyV*0.35 - 0.25*WB.w*Math.sin(WB.th+0.8),
+             -vsum[2]*0.03 - zV*0.06];
+    for(let i=0;i<3;i++){ H.v[i]+=(-90*H.o[i]-5.5*H.v[i])*dt + f[i]*14*dt; H.o[i]+=H.v[i]*dt;
+      H.o[i]=Math.max(-0.05,Math.min(0.05,H.o[i])); }
+  }
+  const idle=!(S.rotating||SP.on||INTRO.on);
+  const tY=S.yawT+(idle?S.idleX:0),tP=S.pitchT+(idle?S.idleY:0);
+  S.yaw+=(tY-S.yaw)*Math.min(1,dt*7);S.pitch+=(tP-S.pitch)*Math.min(1,dt*7);
+  YAW=S.yaw+spinYaw+rockYaw+introYaw;
+  ROT=mul4(rotMat(YAW,S.pitch+introPitch),rotZ(roll));
+  MODEL=new Float32Array(ROT); for(let i=0;i<11;i++)if(i%4!==3)MODEL[i]*=SCALE;
+  MODEL[12]=T[0]; MODEL[13]=T[1]; MODEL[14]=T[2];
+  updateGlove(now,dt);
+  CONTACT.w+=((now<CONTACT.until?1:0)-CONTACT.w)*Math.min(1,dt*22);
+  updateEyes(now,dt);
+  blink=Math.max(blink,dizzyLid,FACE.lid);
+  const proj=perspective(.72,resize(),.1,100); lastProj=proj;
+  GP.fill(0); PL.fill(0);
+  for(let i=0;i<Math.min(8,SL.length);i++){GP.set(SL[i].p,i*3); PL.set(SL[i].pull,i*3);}
+  gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.enable(gl.CULL_FACE);
+  gl.useProgram(prog);
+  gl.uniformMatrix4fv(U.uProj,false,proj); gl.uniformMatrix4fv(U.uModel,false,MODEL);
+  gl.uniform3f(U.uCam,0,0,CFG.camZ); gl.uniform3fv(U.uGP,GP); gl.uniform3fv(U.uPL,PL);
+  gl.uniform3f(U.uPivot,...D.pivot); gl.uniform1f(U.uMX,XM); gl.uniform2f(U.uEyeLine,D.eyeLine[0],D.eyeLine[1]); gl.uniform2f(U.uCornerX,D.mouthCorner[0],D.mouthCorner[1]); gl.uniform1f(U.uRadius,CFG.radius); gl.uniform1f(U.uSharp,CFG.pinchSharp);
+  const jawAll=Math.min(1,S.jaw+FACE.jaw+SLEEP.jaw+idleJaw*(1-S.jaw));
+  const surprise=ss(0.0,0.75,S.jaw);
+  gl.uniform1f(U.uJaw,jawAll*CFG.jawMax);
+  gl.uniform1f(U.uExprM,Math.max(-0.9,Math.min(2.0,surprise+FACE.mouth)));
+  gl.uniform1f(U.uExprC,Math.max(-3.0,Math.min(1.3,surprise+FACE.center)));
+  gl.uniform1f(U.uBrowL,Math.max(-1.3,Math.min(1.3,surprise+FACE.browL)));
+  gl.uniform1f(U.uBrowR,Math.max(-1.3,Math.min(1.3,surprise+FACE.browR)));
+  gl.uniform1f(U.uWide,Math.max(ss(0.0,0.6,S.jaw),FACE.wide)); gl.uniform3f(U.uHair,H.o[0],H.o[1],H.o[2]);
+  gl.uniform1f(U.uSoft,window.__soft!==undefined?window.__soft:LIGHTS[lightIdx].v);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,tex); gl.uniform1i(U.uTex,0);
+  gl.uniform1f(U.uPainted,paintOn?painted:0);
+  gl.uniform3fv(U.uSkin,D.skin);
+  for(let i=0;i<2;i++){const e=EY[i]; gl.uniform4f(U["uE"+i],e.c[0],e.c[1],e.c[2],e.th); gl.uniform2f(U["uAB"+i],e.a,e.b);
+    const o=eyeOffset(i); gl.uniform2f(U["uG"+i],o[0],o[1]); gl.uniform1f(U["uOuter"+i],e.c[0]<XM?-1:1);}
+  gl.uniform1f(U.uBlink,blink); gl.uniform1f(U.uIrisK,IRK); gl.uniform2f(U.uLook,G.cur[0],G.cur[1]);
+  gl.cullFace(gl.BACK); gl.uniform1f(U.uCav,0); bind(HEAD); gl.drawElements(gl.TRIANGLES,HEAD.n,HEAD.type,0);
+  gl.uniform1f(U.uCav,1); bind(CAV); gl.drawElements(gl.TRIANGLES,CAV.n,gl.UNSIGNED_SHORT,0);
+  drawFx(dt);
+}
+document.getElementById("replay").addEventListener("click",e=>{e.stopPropagation(); playIntro();});
+document.getElementById("replay").addEventListener("pointerdown",e=>e.stopPropagation());
+window.__S=S; window.__SL=SL; window.__setHold=v=>{holdOpen=v;}; window.__G=G; window.__spin=startSpin;
+window.__demo=()=>{DEMO.at=0;}; window.__DEMO=DEMO; window.__state=()=>({demo:DEMO.on,glove:GV.pose,intro:INTRO.on,spin:SP.on,pending:spinPending,dance:DZS.on,loop:danceLoop,sleep:SLEEP.phase,seen:{...SEEN},idle:!!idleAnim,tilt:TILT.on,held:SL.filter(s=>s.mode==='held').length}); window.__mess=()=>heat(performance.now()); window.__dizzy=playDizzy; window.__rh=(w,big)=>{addHeat(w); lastInteract=performance.now(); reactToHeat(big); return {lvl:heatLevel,warned:performance.now()-warnedAt<CFG.warnWin*1000,after:pullsSinceWarn,spin:SP.on};}; window.__sleep=fallAsleep; window.__wake=wakeUp; window.__dance=()=>playDance(false); window.__danceLoop=()=>playDance(true); window.__look=d=>lookAtYou(d||1,true); window.__dbg=()=>({t:Math.round(performance.now()),no:NO.on,noKind:NO.kind,idle:!!idleAnim,tilt:TILT.on,dz:DZS.on,spin:SP.on,since:Math.round(performance.now()-lastInteract),heat:+heat(performance.now()).toFixed(2),lvl:heatLevel,slots:SL.map(q=>q.mode).join(','),dzw:+DZ.w.toFixed(2),wbw:+WB.w.toFixed(2),contact:+CONTACT.w.toFixed(2),dance:DZS.on,loop:danceLoop,diz:DIZ.on,sleep:SLEEP.phase,tx:+T[0].toFixed(3),ty:+T[1].toFixed(3),blink:+blink.toFixed(2)}); window.__no=k=>playNo(k||'annoyed'); window.__scoot=i=>playScoot(i); window.__face=(n,h)=>playFace(n,h||1.5); window.__POSES=POSES; window.__intro=playIntro; window.__tilt=playTilt;
+window.addEventListener("resize",resize);
+playIntro();
+requestAnimationFrame(frame);
+
+})();
+</script>
+
+</body></html>
