@@ -50,7 +50,7 @@ Written for someone who is not a programmer but is comfortable directing one. Ea
 
 | Need | Why |
 | --- | --- |
-| Claude (Pro or above) with a Project, Artifacts and a connected folder | the Project keeps a status file across chats; Artifacts host each build at a stable link; the connected folder is how files reach your disk |
+| Claude (Pro or above) with a Project, Artifacts and a project folder it can write to | the Project keeps a status file across chats; Artifacts host each build at a stable link; the folder is where files live |
 | A 3D model generator with GLB export (Tripo was used; Meshy also works) | the head comes from here. Export is usually a paid feature even when generation is free |
 | An image generator (Gemini was used) | concept art, the three-view turnaround that feeds the 3D generator, cursor art |
 | Photos of yourself: front, both sides, back, plus any signature item | the generator has to know your face and your props |
@@ -162,7 +162,7 @@ Claude cannot hear its own output; it sets levels by arithmetic. You are the onl
 
 ## Phase 8 — Put it on your website
 
-The head lives as its own page in a subfolder, embedded in an iframe with a photo fallback for browsers without WebGL. Prototype the homepage in an artifact with a layout switch first. Strip the test keys or hide them behind a query parameter. Have Claude copy files into the site with a dated backup and a changelog entry every time, and verify size and content on disk after each copy. Ship it yourself; do not have Claude run git on your working folder. Test on real devices: your phone with the ring switch both ways, a desktop at full size, and a second visit in the same session.
+The head lives as its own page in a subfolder, embedded in an iframe with a photo fallback for browsers without WebGL. Prototype the homepage in an artifact with a layout switch first. Strip the test keys or hide them behind a query parameter. Put the head files in their own folder, keep a copy of anything you change, and open each file Claude wrote to confirm the change is there before you deploy the way you normally deploy your site. Test on real devices: your phone with the ring switch both ways, a desktop at full size, and a second visit in the same session.
 
 Three things learned the hard way: anything placed relative to the head's on-screen position must read that position once when the head has settled and hold it; anything measured from text must re-measure after web fonts load; physics must step in fixed sub-steps per frame (this template does) or slow devices and screen recorders see slow motion.
 
