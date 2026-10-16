@@ -4,6 +4,8 @@ A Super Mario 64-style interactive 3D head for a web page: grab the face, it str
 
 One `index.html`, no frameworks, no build step, no server. Runs in any modern browser, phones included.
 
+**[Live demo of this template](https://hannahook.github.io/stretchy-head-template/)** — the placeholder head, running exactly as it ships here.
+
 This repository is a **template**. It ships with a generic placeholder head so it runs as-is. The point is to replace that head with your own, and the guide below is how it was done the first time, by a non-programmer directing Claude. The live original: [hannarodgers.com](https://hannarodgers.com).
 
 ## Run it
